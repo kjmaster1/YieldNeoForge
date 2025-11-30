@@ -1,0 +1,35 @@
+{
+  "yield.configuration.title": "Yield Configs",
+  "yield.configuration.section.yield.common.toml": "Yield Configs",
+  "yield.configuration.section.yield.common.toml.title": "Yield Configs",
+  "yield.configuration.items": "Item List",
+  "yield.configuration.logDirtBlock": "Log Dirt Block",
+  "yield.configuration.magicNumberIntroduction": "Magic Number Text",
+  "yield.configuration.magicNumber": "Magic Number",
+
+  "key.categories.yield": "Yield",
+  "key.yield.open_dashboard": "Open Dashboard",
+
+  "yield.toast.complete": "Goal Met!",
+  "yield.dashboard.title": "Yield Dashboard",
+
+  "yield.label.project_name": "Project Name",
+  "yield.label.new_project": "+ New Project",
+  "yield.label.start": "Start",
+  "yield.label.stop": "Stop",
+  "yield.label.delete": "Delete",
+  "yield.label.add_goal": "+ Goal",
+
+  "yield.tooltip.progress": "Progress: %s / %s",
+  "yield.tooltip.rate": "Yield: %s/hr",
+  "yield.tooltip.eta": "ETA: %s",
+  "yield.tooltip.complete": "Complete!",
+  "yield.label.goals": "Goals:",
+  "yield.label.select_prompt": "Select or Create a Project",
+  "yield.label.switch": "Switch",
+  "yield.label.amount": "Amount",
+  "yield.label.save": "Save",
+  "yield.label.cancel": "Cancel",
+  "yield.label.set_goal_amount": "Set Goal Amount",
+  "yield.label.search_items": "Search Items..."
+}

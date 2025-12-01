@@ -15,6 +15,8 @@ import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
@@ -48,6 +50,8 @@ public class YieldDashboardScreen extends Screen {
     private Button deleteButton;
     private Button newProjectButton;
     private Button addGoalButton;
+    private Button xpToggleButton;
+    private Button moveHudButton;
 
     // --- Modal Widgets ---
     private EditBox goalAmountInput;
@@ -94,6 +98,19 @@ public class YieldDashboardScreen extends Screen {
         this.addGoalButton = this.addRenderableWidget(Button.builder(Component.translatable("yield.label.add_goal"), btn -> openItemSelector()).build());
 
         this.deleteButton = this.addRenderableWidget(Button.builder(Component.translatable("yield.label.delete"), btn -> deleteSelected()).build());
+
+        this.xpToggleButton = this.addRenderableWidget(Button.builder(Component.literal("XP"), btn -> {
+            YieldProject p = getSelectedProject();
+            if (p != null) {
+                p.setTrackXp(!p.shouldTrackXp());
+                ProjectManager.get().save();
+                updateWidgetStates(); // Refresh button text
+            }
+        }).build());
+
+        this.moveHudButton = this.addRenderableWidget(Button.builder(Component.translatable("yield.label.move_hud"), btn -> {
+            this.minecraft.setScreen(new HudEditorScreen(this));
+        }).build());
 
         this.goalAmountInput = new EditBox(this.font, 0, 0, 100, 20, Component.translatable("yield.label.amount"));
         this.goalAmountInput.setFilter(s -> s.matches("\\d*")); // Numbers only
@@ -234,10 +251,31 @@ public class YieldDashboardScreen extends Screen {
 
     @Override
     protected void repositionElements() {
-        this.projectList.updateSizeAndPosition(SIDEBAR_WIDTH, this.height - 30, 0);
+        int btnHeight = 20;
+        int gap = 5;
+
+        int newProjectY = this.height - 25;
+
+        int xpToggleY = newProjectY - btnHeight - gap;
+
+        int moveHudY = xpToggleY - btnHeight - gap;
+
+        int statsAreaHeight = 25;
+        int listBottom = moveHudY - statsAreaHeight - gap;
+
+        this.projectList.updateSizeAndPosition(SIDEBAR_WIDTH, listBottom, 0);
         this.projectList.setPosition(0, 0);
-        this.newProjectButton.setPosition(5, this.height - 25);
+
+        this.newProjectButton.setPosition(5, newProjectY);
         this.newProjectButton.setWidth(SIDEBAR_WIDTH - 10);
+
+        if (this.xpToggleButton != null) {
+            this.xpToggleButton.setPosition(5, xpToggleY);
+            this.xpToggleButton.setWidth(SIDEBAR_WIDTH - 10);
+        }
+
+        this.moveHudButton.setPosition(5, moveHudY);
+        this.moveHudButton.setWidth(SIDEBAR_WIDTH - 10);
 
         int contentLeft = SIDEBAR_WIDTH + PADDING;
         int contentRight = getContentRight() - PADDING;
@@ -245,7 +283,7 @@ public class YieldDashboardScreen extends Screen {
         int deleteW = 60;
         int addGoalW = 60;
         int startW = 80;
-        int gap = 4;
+        gap = 4;
         int topY = 8;
 
         int deleteX = contentRight - deleteW;
@@ -258,6 +296,12 @@ public class YieldDashboardScreen extends Screen {
             addGoalX = startX + startW + gap;
             deleteX = addGoalX + addGoalW + gap;
         }
+
+        int sidebarLeft = 5;
+        int bottomY = this.height - 50;
+
+        this.xpToggleButton.setPosition(sidebarLeft, bottomY);
+        this.xpToggleButton.setWidth(SIDEBAR_WIDTH - 10);
 
         this.deleteButton.setPosition(deleteX, topY);
         this.deleteButton.setWidth(deleteW);
@@ -299,7 +343,7 @@ public class YieldDashboardScreen extends Screen {
         YieldProject p = getSelectedProject();
         if (p == null) return;
         if (SessionTracker.get().isRunning()) {
-            SessionTracker.get().pauseSession();
+            SessionTracker.get().stopSession();
         } else {
             ProjectManager.get().setActiveProject(p);
             SessionTracker.get().startSession();
@@ -351,6 +395,16 @@ public class YieldDashboardScreen extends Screen {
         YieldProject p = getSelectedProject();
         boolean hasSel = (p != null);
 
+        this.xpToggleButton.visible = hasSel;
+        if (hasSel) {
+            // Update Text: "Track XP: ON" or "Track XP: OFF"
+            String status = p.shouldTrackXp() ? "ON" : "OFF";
+            int color = p.shouldTrackXp() ? 0xFF55FF55 : 0xFFAAAAAA;
+            this.xpToggleButton.setMessage(
+                    Component.literal("Track XP: " + status).withColor(color)
+            );
+        }
+
         if (this.nameInput.getWidth() > 0) {
             this.nameInput.visible = hasSel;
             this.nameInput.setEditable(hasSel);
@@ -388,6 +442,21 @@ public class YieldDashboardScreen extends Screen {
             int cx = SIDEBAR_WIDTH + (getContentRight() - SIDEBAR_WIDTH) / 2;
             // "Select or Create a Project" -> yield.label.select_prompt
             gfx.drawCenteredString(this.font, Component.translatable("yield.label.select_prompt"), cx, this.height / 2, 0xFF888888);
+        }
+
+        if (SessionTracker.get().isRunning() && this.xpToggleButton != null && this.xpToggleButton.visible) {
+            if (p != null && p.shouldTrackXp()) {
+                // The button is at (height - 50), so we draw above it
+                int buttonTop = this.moveHudButton.getY();
+                int xpStatsY = buttonTop - 22; // 22 pixels above the button
+
+                // Draw Icon & Text
+                ItemStack xpIcon = new ItemStack(net.minecraft.world.item.Items.EXPERIENCE_BOTTLE);
+                gfx.renderItem(xpIcon, 8, xpStatsY);
+
+                int xpRate = (int) SessionTracker.get().getXpPerHour();
+                gfx.drawString(this.font, Component.literal(xpRate + " XP/hr"), 28, xpStatsY + 4, 0xFF55FF55, true);
+            }
         }
 
         if (editingGoal != null) {
@@ -438,7 +507,24 @@ public class YieldDashboardScreen extends Screen {
         gfx.drawString(this.font, Component.translatable("yield.label.goals"), left, top - 12, 0xFF888888, false);
 
         List<ProjectGoal> goals = project.getGoals();
-        if (goals.isEmpty()) return;
+        if (goals.isEmpty()) {
+            int areaWidth = rightLimit - left;
+
+            Component helpText = Component.translatable("yield.label.goals_empty");
+
+            List<FormattedCharSequence> lines = this.font.split(helpText, Math.max(50, areaWidth)); // Ensure at least 50px to prevent infinite loops
+
+            int totalTextHeight = lines.size() * this.font.lineHeight;
+            int startY = top + (bottomLimit - top - totalTextHeight) / 2; // Center vertically in available space
+            int centerX = left + areaWidth / 2;
+
+            for (FormattedCharSequence line : lines) {
+                gfx.drawCenteredString(this.font, line, centerX, startY, 0xFF606060);
+                startY += this.font.lineHeight;
+            }
+
+            return;
+        }
 
         gfx.enableScissor(left, top, rightLimit, bottomLimit);
 
@@ -608,8 +694,14 @@ public class YieldDashboardScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (editingGoal != null) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) { closeGoalEditor(); return true; }
-            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) { saveGoalEdit(); return true; }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                closeGoalEditor();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                saveGoalEdit();
+                return true;
+            }
 
             // Pass keys to input box
             if (this.goalAmountInput.keyPressed(keyCode, scanCode, modifiers)) return true;
@@ -645,6 +737,7 @@ public class YieldDashboardScreen extends Screen {
         public void refresh() {
             this.clearEntries();
             for (YieldProject p : ProjectManager.get().getProjects()) this.addEntry(new ProjectEntry(p));
+            this.setScrollAmount(this.getScrollAmount());
         }
 
         public void selectProject(YieldProject p) {
@@ -700,10 +793,19 @@ public class YieldDashboardScreen extends Screen {
                 gfx.fill(left, top, left + width - 4, top + height, 0xFF202020);
             }
 
+            Optional<YieldProject> active = ProjectManager.get().getActiveProject();
+            if (active.isPresent() && active.get().getId().equals(project.getId())) {
+                int indicatorX = left + 4;
+                int indicatorY = top + (height - 6) / 2;
+
+                // Draw a glowing green dot
+                gfx.fill(indicatorX, indicatorY, indicatorX + 4, indicatorY + 4, 0xFF55FF55);
+            }
+
             int color = selected ? 0xFFFFFFFF : 0xFFAAAAAA;
             String name = project.getName();
 
-            int padding = 4;
+            int padding = 12;
             int availableWidth = width - (padding * 2);
 
             if (font.width(name) > availableWidth) {

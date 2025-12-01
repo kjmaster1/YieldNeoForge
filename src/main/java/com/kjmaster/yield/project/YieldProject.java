@@ -15,23 +15,26 @@ public class YieldProject {
     public static final Codec<YieldProject> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.STRING.fieldOf("name").forGetter(YieldProject::getName),
             UUID_CODEC.fieldOf("id").forGetter(YieldProject::getId),
-            ProjectGoal.CODEC.listOf().fieldOf("goals").forGetter(YieldProject::getGoals)
+            ProjectGoal.CODEC.listOf().fieldOf("goals").forGetter(YieldProject::getGoals),
+            Codec.BOOL.optionalFieldOf("track_xp", false).forGetter(YieldProject::shouldTrackXp)
     ).apply(instance, YieldProject::new));
 
     private String name;
     private final UUID id;
     private final List<ProjectGoal> goals;
+    private boolean trackXp;
 
     // Constructor for deserialization
-    public YieldProject(String name, UUID id, List<ProjectGoal> goals) {
+    public YieldProject(String name, UUID id, List<ProjectGoal> goals, boolean trackXp) {
         this.name = name;
         this.id = id;
         this.goals = new ArrayList<>(goals); // Ensure mutable list
+        this.trackXp = trackXp;
     }
 
     // Constructor for new projects
     public YieldProject(String name) {
-        this(name, UUID.randomUUID(), new ArrayList<>());
+        this(name, UUID.randomUUID(), new ArrayList<>(), false);
     }
 
     public void addGoal(ProjectGoal goal) {
@@ -63,5 +66,13 @@ public class YieldProject {
 
     public UUID getId() {
         return id;
+    }
+
+    public boolean shouldTrackXp() {
+        return trackXp;
+    }
+
+    public void setTrackXp(boolean trackXp) {
+        this.trackXp = trackXp;
     }
 }

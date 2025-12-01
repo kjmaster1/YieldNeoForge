@@ -19,13 +19,18 @@ public class SessionTracker {
 
     // Store a RateCalculator for each Item Type (using Item object as key)
     private final Map<Object, RateCalculator> calculators = new HashMap<>();
+    private final RateCalculator xpCalculator = new RateCalculator(RATE_WINDOW_SECONDS);
 
     // Store the last known count of items to detect changes
     private final Map<Object, Integer> lastCounts = new HashMap<>();
+    private int lastTotalXp = -1;
+
+    // NEW: Optimization Flags
+    private boolean isDirty = true;
+    private int lastInventoryVersion = -1;
 
     private boolean isRunning = false;
     private long sessionStartTime = 0;
-    private int tickCounter = 0;
 
     private SessionTracker() {}
 
@@ -40,10 +45,18 @@ public class SessionTracker {
         isRunning = true;
         sessionStartTime = System.currentTimeMillis();
         calculators.clear();
+        xpCalculator.clear();
         lastCounts.clear();
+        lastTotalXp = -1;
+
+        // Force immediate scan on start
+        isDirty = true;
+        if (Minecraft.getInstance().player != null) {
+            lastInventoryVersion = Minecraft.getInstance().player.getInventory().getTimesChanged();
+        }
     }
 
-    public void pauseSession() {
+    public void stopSession() {
         isRunning = false;
     }
 
@@ -51,9 +64,26 @@ public class SessionTracker {
         return isRunning;
     }
 
+    // NEW: Allow external events to trigger a scan
+    public void setDirty() {
+        this.isDirty = true;
+    }
+
     public long getSessionDuration() {
         if (!isRunning) return 0;
         return System.currentTimeMillis() - sessionStartTime;
+    }
+
+    public void addXpGain(int amount) {
+        if (!isRunning || amount <= 0) return;
+        var projectOpt = ProjectManager.get().getActiveProject();
+        if (projectOpt.isPresent() && projectOpt.get().shouldTrackXp()) {
+            xpCalculator.addGain(amount);
+        }
+    }
+
+    public double getXpPerHour() {
+        return xpCalculator.getItemsPerHour();
     }
 
     /**
@@ -62,44 +92,85 @@ public class SessionTracker {
     public void onTick(Player player) {
         if (!isRunning || player == null) return;
 
-        // Optimization: Only scan inventory every 10 ticks (0.5 seconds)
-        // This is fast enough for UI updates but saves CPU cycles.
-        tickCounter++;
-        if (tickCounter < 10) return;
-        tickCounter = 0;
-
-        updateTracking(player);
-    }
-
-    private void updateTracking(Player player) {
         var projectOpt = ProjectManager.get().getActiveProject();
         if (projectOpt.isEmpty()) return;
         YieldProject project = projectOpt.get();
 
-        for (ProjectGoal goal : project.getGoals()) {
-            // 1. Get previous state
-            int lastCount = lastCounts.getOrDefault(goal.getItem(), -1); // -1 indicates first run/init
+        // 1. Heavy Logic: Inventory Scanning
+        // Only run this if the inventory actually changed (Event-Driven)
+        if (player.getInventory().getTimesChanged() != lastInventoryVersion) {
+            isDirty = true;
+            lastInventoryVersion = player.getInventory().getTimesChanged();
+        }
 
-            // 2. Get current state
+        if (isDirty) {
+            updateCounts(player, project); // Only counts items
+            isDirty = false;
+        }
+
+        // 2. Light Logic: Rate Decay & UI Cache
+        // Run this EVERY TICK (or every 20 ticks) to ensure the "Items/Hour"
+        // drops to zero if the player stops working.
+        updateRates(project);
+
+        // 3. XP Logic (Hybrid)
+        if (project.shouldTrackXp()) {
+            updateXpTracking(player);
+        }
+    }
+
+
+
+    private void updateXpTracking(Player player) {
+        int currentXp = player.totalExperience;
+        if (lastTotalXp != -1) {
+            int diff = currentXp - lastTotalXp;
+            if (diff > 0) {
+                addXpGain(diff);
+            }
+        }
+        lastTotalXp = currentXp;
+    }
+
+    /**
+     * Heavy scan: updates actual item counts and feeds data TO the calculators.
+     */
+    private void updateCounts(Player player, YieldProject project) {
+        for (ProjectGoal goal : project.getGoals()) {
+            int lastCount = lastCounts.getOrDefault(goal.getItem(), -1);
             int currentCount = countItemInInventory(player, goal);
 
-            // 3. Detect "Crossing the Finish Line"
-            // We only trigger if we weren't done before (lastCount < target),
-            // and we are done now (currentCount >= target).
-            // We also ignore the very first tick (lastCount == -1) to prevent login spam.
+            // Detect Completion Toast
             if (lastCount != -1 && lastCount < goal.getTargetAmount() && currentCount >= goal.getTargetAmount()) {
-                // FIRE TOAST!
                 Minecraft.getInstance().getToasts().addToast(new com.kjmaster.yield.client.GoalToast(goal));
             }
 
-            // ... Existing Rate Calculation Logic ...
+            // Calculate Delta
             int delta = (lastCount == -1) ? 0 : currentCount - lastCount;
+            if (delta > 0) {
+                // Feed the calculator
+                RateCalculator calc = calculators.computeIfAbsent(goal.getItem(), k -> new RateCalculator(RATE_WINDOW_SECONDS));
+                calc.addGain(delta);
+            }
 
-            RateCalculator calc = calculators.computeIfAbsent(goal.getItem(), k -> new RateCalculator(RATE_WINDOW_SECONDS));
-            if (delta > 0) calc.addGain(delta);
-
-            goal.updateCache(currentCount, calc.getItemsPerHour());
             lastCounts.put(goal.getItem(), currentCount);
+        }
+    }
+
+    /**
+     * Light update: pulls data FROM the calculators to update the UI cache.
+     * This handles the "Decay" when idle.
+     */
+    private void updateRates(YieldProject project) {
+        for (ProjectGoal goal : project.getGoals()) {
+            RateCalculator calc = calculators.get(goal.getItem());
+            double rate = (calc == null) ? 0.0 : calc.getItemsPerHour();
+
+            // We read the current count from our local cache map to avoid scanning the inventory again
+            int currentCount = lastCounts.getOrDefault(goal.getItem(), 0);
+
+            // Update the goal's transient data for the HUD
+            goal.updateCache(currentCount, rate);
         }
     }
 

@@ -9,6 +9,7 @@
 
   "key.categories.yield": "Yield",
   "key.yield.open_dashboard": "Open Dashboard",
+  "key.yield.quick_track": "Quick Track Item",
 
   "yield.toast.complete": "Goal Met!",
   "yield.dashboard.title": "Yield Dashboard",
@@ -31,5 +32,7 @@
   "yield.label.save": "Save",
   "yield.label.cancel": "Cancel",
   "yield.label.set_goal_amount": "Set Goal Amount",
-  "yield.label.search_items": "Search Items..."
+  "yield.label.search_items": "Search Items...",
+  "yield.label.move_hud": "Move Hud",
+  "yield.label.goals_empty": "Drag items from JEI or click '+ Goal' to begin."
 }

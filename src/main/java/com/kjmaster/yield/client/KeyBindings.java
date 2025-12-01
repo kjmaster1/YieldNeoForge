@@ -13,4 +13,12 @@ public class KeyBindings {
             GLFW.GLFW_KEY_Y, // Default to 'Y'
             "key.categories.yield" // Category
     );
+
+    public static final KeyMapping QUICK_TRACK = new KeyMapping(
+            "key.yield.quick_track",
+            KeyConflictContext.GUI, // Only active in GUIs
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_LEFT_CONTROL, // Default to Ctrl
+            "key.categories.yield"
+    );
 }

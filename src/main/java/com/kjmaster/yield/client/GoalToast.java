@@ -34,7 +34,7 @@ public class GoalToast implements Toast {
         // 3. Draw Text
         // Title: "Goal Met!" -> Vanilla Yellow (0xFFFFFF00)
         // We use 0xFFFFFF00 (ARGB) which matches vanilla's 16776960
-        gfx.drawString(toastComponent.getMinecraft().font, Component.translatable("yield.toast.complete"), 30, 7, 0xFFFFFF00, false);
+        gfx.drawString(toastComponent.getMinecraft().font, Component.translatable("yield.toast.complete"), 30, 7, Theme.TEXT_YELLOW, false);
 
         // Description: "64/64 Diamonds" -> Vanilla White (0xFFFFFFFF)
         String desc = goal.getTargetAmount() + " " + goal.getItem().getName(new ItemStack(goal.getItem())).getString();
@@ -45,7 +45,7 @@ public class GoalToast implements Toast {
             desc = toastComponent.getMinecraft().font.plainSubstrByWidth(desc, maxWidth - 10) + "...";
         }
 
-        gfx.drawString(toastComponent.getMinecraft().font, desc, 30, 18, 0xFFFFFFFF, false);
+        gfx.drawString(toastComponent.getMinecraft().font, desc, 30, 18, Theme.TEXT_PRIMARY, false);
 
         // 4. Play Sound (Once)
         if (!this.playedSound && timeSinceLastVisible > 0) {

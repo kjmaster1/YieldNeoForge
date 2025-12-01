@@ -6,6 +6,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import org.slf4j.Logger;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -21,7 +22,11 @@ public class Yield {
     public Yield(IEventBus modEventBus, ModContainer modContainer) {
         // Register our mod's ModConfigSpec so that FML can create and load the config file for us
         modContainer.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
-        YieldServiceRegistry.init();
+        modEventBus.addListener(this::onClientSetup);
     }
 
+    private void onClientSetup(final FMLClientSetupEvent event) {
+        // Initialize Service Registry here
+        YieldServiceRegistry.init();
+    }
 }

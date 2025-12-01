@@ -107,9 +107,13 @@ public class ProjectSidebar implements Renderable, GuiEventListener, NarratableE
         this.footerLayout.setPosition(x + 5, footerY); // 5px padding from left
 
         // Position List above footer
-        int listBottom = footerY - 10;
+        int listBottom = Math.max(y, footerY - 10); // Ensure we don't go negative
+
+        // Update list bounds
         this.projectList.updateSizeAndPosition(this.width, listBottom, y);
         this.projectList.setPosition(x, y);
+        // Explicitly set left position for correct centering of rows
+        this.projectList.setLeftPos(x);
     }
 
     public void refreshList() {
@@ -138,7 +142,7 @@ public class ProjectSidebar implements Renderable, GuiEventListener, NarratableE
         this.xpToggleButton.active = hasSel;
         if (hasSel) {
             String status = p.shouldTrackXp() ? "ON" : "OFF";
-            int color = p.shouldTrackXp() ? 0xFF55FF55 : Theme.TEXT_SECONDARY;
+            int color = p.shouldTrackXp() ? 0xFF55FF55 : 0xFFAAAAAA;
             this.xpToggleButton.setMessage(Component.literal("Track XP: " + status).withColor(color));
         } else {
             this.xpToggleButton.setMessage(Component.literal("XP"));
@@ -147,6 +151,10 @@ public class ProjectSidebar implements Renderable, GuiEventListener, NarratableE
 
     @Override
     public void render(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
+        // FIX: Ensure rendering happens on top of background
+        gfx.pose().pushPose();
+        gfx.pose().translate(0.0f, 0.0f, 10.0f); // Slight Z-offset
+
         // Draw Background
         gfx.fill(x, y, x + width, y + height, Theme.SIDEBAR_BG);
         gfx.vLine(x + width, y, y + height, Theme.SIDEBAR_BORDER);
@@ -158,7 +166,7 @@ public class ProjectSidebar implements Renderable, GuiEventListener, NarratableE
         this.moveHudButton.render(gfx, mouseX, mouseY, partialTick);
         this.newProjectButton.render(gfx, mouseX, mouseY, partialTick);
 
-        // Render XP Stats Logic (Moved from Dashboard)
+        // Render XP Stats
         if (YieldServiceRegistry.getSessionTracker().isRunning()) {
             YieldProject p = getSelectedProject();
             if (p != null && p.shouldTrackXp()) {
@@ -168,9 +176,11 @@ public class ProjectSidebar implements Renderable, GuiEventListener, NarratableE
                 int textY = this.xpToggleButton.getY() - 10;
                 int centerX = this.x + (this.width / 2);
 
-                gfx.drawCenteredString(this.font, Component.literal(xpRate + " XP/hr"), centerX, textY, 0xFF55FF55);
+                gfx.drawCenteredString(this.font, Component.literal(xpRate + " XP/hr"), centerX, textY, Theme.COLOR_XP);
             }
         }
+
+        gfx.pose().popPose();
     }
 
     @Override
@@ -205,16 +215,27 @@ public class ProjectSidebar implements Renderable, GuiEventListener, NarratableE
             for (YieldProject p : YieldServiceRegistry.getProjectManager().getProjects()) {
                 this.addEntry(new ProjectEntry(p));
             }
+            // Maintain scroll position if possible
             this.setScrollAmount(this.getScrollAmount());
         }
 
         public void selectProject(YieldProject p) {
+            if (p == null) {
+                this.setSelected(null);
+                return;
+            }
             for (ProjectEntry entry : this.children()) {
                 if (entry.project.getId().equals(p.getId())) {
                     this.setSelected(entry);
                     return;
                 }
             }
+        }
+
+        public void setLeftPos(int left) {
+            // In some mappings/versions this might be needed to offset the content
+            // AbstractSelectionList usually handles this via setX, but explicit override is safer
+            super.setX(left);
         }
 
         @Override
@@ -255,14 +276,17 @@ public class ProjectSidebar implements Renderable, GuiEventListener, NarratableE
                 gfx.fill(left, top, left + width - 4, top + height, Theme.LIST_ITEM_HOVER);
             }
 
+            // FIX: Check isRunning() to determine if the indicator should be shown
             Optional<YieldProject> active = YieldServiceRegistry.getProjectManager().getActiveProject();
-            if (active.isPresent() && active.get().getId().equals(project.getId())) {
+            boolean isSessionRunning = YieldServiceRegistry.getSessionTracker().isRunning();
+
+            if (active.isPresent() && active.get().getId().equals(project.getId()) && isSessionRunning) {
                 int indicatorX = left + 4;
                 int indicatorY = top + (height - 6) / 2;
                 gfx.fill(indicatorX, indicatorY, indicatorX + 4, indicatorY + 4, Theme.ACTIVE_PROJECT_INDICATOR);
             }
 
-            int color = selected ? 0xFFFFFFFF : 0xFFAAAAAA;
+            int color = selected ? Theme.TEXT_PRIMARY : Theme.TEXT_SECONDARY;
             String name = project.getName();
             int padding = 12;
             int availableWidth = width - (padding * 2);

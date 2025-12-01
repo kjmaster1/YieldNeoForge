@@ -27,6 +27,7 @@ public class Theme {
     public static final int TEXT_HEADER = 0xFF888888;
     public static final int TEXT_PRIMARY = 0xFFFFFFFF;
     public static final int TEXT_SECONDARY = 0xFFAAAAAA;
+    public static final int TEXT_YELLOW = 0xFFFFFF00;
 
     public static final int COLOR_XP = 0xFF55FF55;
 }

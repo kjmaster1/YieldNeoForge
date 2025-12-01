@@ -1,6 +1,7 @@
 package com.kjmaster.yield.compat.jei;
 
 import com.kjmaster.yield.Yield;
+import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.client.screen.YieldDashboardScreen;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
@@ -52,8 +53,8 @@ public class YieldJeiPlugin implements IModPlugin {
                     @Override
                     public @NotNull Rect2i getArea() {
                         // Drop Zone matches the middle Content area
-                        int startX = YieldDashboardScreen.SIDEBAR_WIDTH;
-                        int topY = YieldDashboardScreen.TOP_BAR_HEIGHT + 15;
+                        int startX = Theme.SIDEBAR_WIDTH;
+                        int topY = Theme.TOP_BAR_HEIGHT + 15;
 
                         int width = screen.getContentRight() - startX;
                         int height = screen.height - topY;
@@ -110,7 +111,7 @@ public class YieldJeiPlugin implements IModPlugin {
             this.screenClass = YieldDashboardScreen.class;
             // Since YieldDashboardScreen is a full-screen overlay, Left/Top are 0
             this.guiLeft = 0;
-            this.guiTop = YieldDashboardScreen.TOP_BAR_HEIGHT;
+            this.guiTop = Theme.TOP_BAR_HEIGHT;
 
             // Snapshot the dynamic values immediately
             // If screen.width is not yet initialized (0), fallback to standard width
@@ -122,12 +123,12 @@ public class YieldJeiPlugin implements IModPlugin {
             this.screenWidth = w;
             this.screenHeight = h;
 
-            this.guiYSize = h - YieldDashboardScreen.TOP_BAR_HEIGHT;
+            this.guiYSize = h - Theme.TOP_BAR_HEIGHT;
 
             if (screen.width > 0) {
                 this.guiXSize = screen.getContentRight();
             } else {
-                this.guiXSize = Math.max(YieldDashboardScreen.SIDEBAR_WIDTH + 100, w - YieldDashboardScreen.JEI_WIDTH);
+                this.guiXSize = Math.max(Theme.SIDEBAR_WIDTH + 100, w - Theme.JEI_WIDTH);
             }
         }
 

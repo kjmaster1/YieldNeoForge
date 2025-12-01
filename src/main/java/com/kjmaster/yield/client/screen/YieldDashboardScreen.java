@@ -30,6 +30,11 @@ import java.util.Optional;
 
 public class YieldDashboardScreen extends Screen {
 
+    // Use Theme Constants
+    public static final int SIDEBAR_WIDTH = Theme.SIDEBAR_WIDTH;
+    public static final int TOP_BAR_HEIGHT = Theme.TOP_BAR_HEIGHT;
+    private static final int PADDING = Theme.PADDING;
+
     private boolean jeiLoaded = false;
 
     // --- Components ---
@@ -46,7 +51,7 @@ public class YieldDashboardScreen extends Screen {
         this.jeiLoaded = ModList.get().isLoaded("jei");
 
         // 1. Initialize Components
-        this.projectSidebar = new ProjectSidebar(this, Theme.SIDEBAR_WIDTH, this.height);
+        this.projectSidebar = new ProjectSidebar(this, SIDEBAR_WIDTH, this.height);
         this.dashboardHeader = new DashboardHeader();
         this.goalGrid = new GoalGrid();
 
@@ -58,14 +63,17 @@ public class YieldDashboardScreen extends Screen {
         this.addRenderableWidget(dashboardHeader);
         this.addRenderableWidget(goalGrid);
 
-        // 4. Initial Layout & State
+        // 4. Populate List
+        projectSidebar.refreshList();
+
+        // 5. Initial Layout & State
         repositionElements();
         restoreSelection();
     }
 
     private void setupEventListeners() {
         // Sidebar Events
-        projectSidebar.setOnProjectSelected(this::selectProject);
+        projectSidebar.setOnProjectSelected(this::onSidebarSelection);
 
         // Header Events
         dashboardHeader.setCallbacks(
@@ -96,42 +104,44 @@ public class YieldDashboardScreen extends Screen {
         // 1. Layout Sidebar
         projectSidebar.layout(0, 0, this.height);
 
-        // 2. Calculate Content Area
-        int contentLeft = Theme.SIDEBAR_WIDTH + Theme.PADDING;
-        int contentRight = getContentRight();
-        int contentWidth = contentRight - contentLeft - Theme.PADDING;
+        // 2. Common Coordinates
+        int contentLeft = SIDEBAR_WIDTH + PADDING;
 
         // 3. Layout Header
-        dashboardHeader.layout(contentLeft, Theme.PADDING, contentWidth, Theme.TOP_BAR_HEIGHT);
+        int headerWidth = this.width - contentLeft - PADDING;
+        dashboardHeader.layout(contentLeft, PADDING, headerWidth, TOP_BAR_HEIGHT);
 
         // 4. Layout Grid
-        int gridTop = Theme.TOP_BAR_HEIGHT + 15;
+        int contentRight = getContentRight();
+        int gridWidth = contentRight - contentLeft - PADDING;
+
+        int gridTop = TOP_BAR_HEIGHT + 15;
         int gridHeight = this.height - gridTop - 10;
-        goalGrid.layout(contentLeft, gridTop, contentWidth, gridHeight);
+        goalGrid.layout(contentLeft, gridTop, gridWidth, gridHeight);
     }
 
-    private void selectProject(YieldProject project) {
-        projectSidebar.selectProject(project);
+    private void onSidebarSelection(YieldProject project) {
         dashboardHeader.setProject(project);
         goalGrid.setProject(project);
     }
 
+    private void setGlobalSelection(YieldProject project) {
+        projectSidebar.selectProject(project);
+    }
+
     private void restoreSelection() {
-        // Try to restore active project, else select first in list
         Optional<YieldProject> active = YieldServiceRegistry.getProjectManager().getActiveProject();
         if (active.isPresent()) {
-            selectProject(active.get());
+            setGlobalSelection(active.get());
         } else {
-            projectSidebar.refreshList(); // Ensure list is populated
-            YieldProject first = projectSidebar.getSelectedProject(); // Sidebar logic selects first by default if list populated?
-            // Actually, we need to force select the first one if Sidebar doesn't auto-select
+            YieldProject first = projectSidebar.getSelectedProject();
             if (first == null) {
                 List<YieldProject> projects = YieldServiceRegistry.getProjectManager().getProjects();
                 if (!projects.isEmpty()) {
-                    selectProject(projects.getFirst());
+                    setGlobalSelection(projects.getFirst());
                 }
             } else {
-                selectProject(first);
+                setGlobalSelection(first);
             }
         }
     }
@@ -149,9 +159,7 @@ public class YieldDashboardScreen extends Screen {
             YieldServiceRegistry.getSessionTracker().startSession();
         }
 
-        // Refresh Header Button Text
         dashboardHeader.updateButtonStates();
-        projectSidebar.refreshList(); // Updates active indicator
     }
 
     private void deleteProject() {
@@ -163,9 +171,9 @@ public class YieldDashboardScreen extends Screen {
             // Clear selection or select next available
             List<YieldProject> projects = YieldServiceRegistry.getProjectManager().getProjects();
             if (!projects.isEmpty()) {
-                selectProject(projects.getFirst());
+                setGlobalSelection(projects.getFirst());
             } else {
-                selectProject(null);
+                setGlobalSelection(null);
             }
         }
     }
@@ -187,8 +195,8 @@ public class YieldDashboardScreen extends Screen {
 
     public List<Rect2i> getExclusionAreas() {
         List<Rect2i> areas = new ArrayList<>();
-        areas.add(new Rect2i(0, 0, Theme.SIDEBAR_WIDTH, this.height));
-        areas.add(new Rect2i(0, 0, this.width, Theme.TOP_BAR_HEIGHT));
+        areas.add(new Rect2i(0, 0, SIDEBAR_WIDTH, this.height));
+        areas.add(new Rect2i(0, 0, this.width, TOP_BAR_HEIGHT));
         return areas;
     }
 
@@ -199,10 +207,8 @@ public class YieldDashboardScreen extends Screen {
 
     @Nullable
     public ProjectGoal getEditingGoal() {
-        return null; // Dashboard never edits directly now
+        return null;
     }
-
-    // --- Drop Logic (Used by JEI Plugin) ---
 
     public void handleJeiDrop(ItemStack stack) {
         YieldProject project = getSelectedProject();
@@ -222,7 +228,6 @@ public class YieldDashboardScreen extends Screen {
         YieldServiceRegistry.getProjectManager().save();
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
 
-        // Open the editor for this new goal
         this.minecraft.setScreen(new GoalEditScreen(this, targetGoal));
     }
 
@@ -251,10 +256,7 @@ public class YieldDashboardScreen extends Screen {
 
     @Override
     public void render(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
-        // Draw Main Backgrounds
         gfx.fillGradient(0, 0, this.width, this.height, Theme.BG_GRADIENT_TOP, Theme.BG_GRADIENT_BOT);
-
-        // Render registered components (Sidebar, Header, Grid)
         super.render(gfx, mouseX, mouseY, partialTick);
     }
 }

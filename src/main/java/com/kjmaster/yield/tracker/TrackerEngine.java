@@ -35,6 +35,10 @@ public class TrackerEngine {
         this.xpCalculator = new RateCalculator(Config.RATE_WINDOW.get(), timeSource);
     }
 
+    public TimeSource getTimeSource() {
+        return timeSource;
+    }
+
     public void reset() {
         this.xpCalculator.clear();
         this.tickCounter = 0;
@@ -84,7 +88,7 @@ public class TrackerEngine {
         boolean changed = false;
         for (ProjectGoal goal : project.getGoals()) {
             if (!state.getTrackers().containsKey(goal)) {
-                state.getTrackers().put(goal, new GoalTracker(goal));
+                state.getTrackers().put(goal, new GoalTracker(goal, this.timeSource));
                 changed = true;
             }
         }

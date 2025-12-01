@@ -3,6 +3,7 @@ package com.kjmaster.yield.tracker;
 import com.kjmaster.yield.Config;
 import com.kjmaster.yield.client.GoalToast;
 import com.kjmaster.yield.project.ProjectGoal;
+import com.kjmaster.yield.time.TimeSource;
 import net.minecraft.client.Minecraft;
 
 public class GoalTracker {
@@ -19,9 +20,9 @@ public class GoalTracker {
     // Scanning Buffer (Prevents object allocation during scans)
     private int tempCount = 0;
 
-    public GoalTracker(ProjectGoal goal) {
+    public GoalTracker(ProjectGoal goal, TimeSource timeSource) {
         this.goal = goal;
-        this.calculator = new RateCalculator(Config.RATE_WINDOW.get());
+        this.calculator = new RateCalculator(Config.RATE_WINDOW.get(), timeSource);
     }
 
     public void update(int newCount) {

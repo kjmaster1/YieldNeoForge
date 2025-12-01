@@ -1,6 +1,7 @@
 package com.kjmaster.yield.client.component;
 
 import com.kjmaster.yield.YieldServiceRegistry;
+import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.project.YieldProject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -121,19 +122,27 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
         this.buttonLayout.arrangeElements();
         int buttonsWidth = this.buttonLayout.getWidth();
 
-        // Align buttons to the right, but keep padding
-        int buttonsX = x + width - buttonsWidth;
-        int buttonsY = y + 8; // Top padding
+        // Calculate Right Alignment
+        // x = left edge of content area
+        // width = total width of content area
+        // buttonsX = x + width - buttonsWidth -> Pins buttons to the far right
+        int idealX = x + width - buttonsWidth;
+
+        // Safety: Clamp to 'x' to ensure they don't slide off-screen to the left if window is tiny
+        int buttonsX = Math.max(x, idealX);
+        int buttonsY = y + Theme.PADDING;
 
         this.buttonLayout.setPosition(buttonsX, buttonsY);
 
         // 2. Arrange Name Input (Left side)
-        // It fills the space between X and ButtonsX
-        int inputAvailableWidth = buttonsX - x - 10; // 10px gap
+        // It fills the space between 'x' and the start of the buttons
+        int gap = 10;
+        int inputAvailableWidth = buttonsX - x - gap;
 
         this.nameInput.setX(x);
         this.nameInput.setY(buttonsY);
 
+        // Hide input if there is no room (prevent overlap)
         if (inputAvailableWidth < 50) {
             this.nameInput.setWidth(0);
             this.nameInput.setVisible(false);

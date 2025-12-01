@@ -28,8 +28,9 @@ public class YieldOverlay implements LayeredDraw.Layer {
     private static final int LINE_HEIGHT = 18;
 
     // Colors
-    private static final int TEXT_COLOR = 0xFFFFFF;
-    private static final int TEXT_COLOR_PAUSED = 0xFFAAAAAA;
+    private static final int TEXT_COLOR = Theme.TEXT_PRIMARY;
+    private static final int TEXT_COLOR_PAUSED = Theme.TEXT_SECONDARY;
+
     private static final int RATE_COLOR = 0x55FF55;
     private static final int RATE_COLOR_PAUSED = 0xFF888888;
     private static final int XP_COLOR = 0xAAFFAA;

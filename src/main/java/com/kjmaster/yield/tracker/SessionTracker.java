@@ -65,7 +65,7 @@ public class SessionTracker implements ISessionTracker {
     @Override
     public GoalTracker getTracker(ProjectGoal goal) {
         // If not present, create it. Engine will sync it later, or we create it here.
-        return state.getTrackers().computeIfAbsent(goal, GoalTracker::new);
+        return state.getTrackers().computeIfAbsent(goal, g -> new GoalTracker(g, engine.getTimeSource()));
     }
 
     @Override

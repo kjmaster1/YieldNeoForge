@@ -1,13 +1,15 @@
 package com.kjmaster.yield.service;
 
 import com.kjmaster.yield.compat.curios.CuriosScanner;
-import com.kjmaster.yield.project.ProjectGoal;
-import com.kjmaster.yield.util.ItemMatcher;
+import com.kjmaster.yield.util.StackKey;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.items.IItemHandler;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class InventoryScanner {
 
@@ -17,34 +19,40 @@ public class InventoryScanner {
         this.isCuriosLoaded = ModList.get().isLoaded("curios");
     }
 
-    public int countItem(Player player, ProjectGoal goal) {
-        ItemStack targetStack = goal.getRenderStack();
-        int count = 0;
+    /**
+     * Scans inventory and returns a map of StackKey -> Total Count.
+     * This preserves Component data for Strict Mode matching.
+     */
+    public Map<StackKey, Integer> scanInventory(Player player) {
+        Map<StackKey, Integer> snapshot = new HashMap<>();
 
-        // 1. Scan Player Inventory (Main + Offhand + Armor)
+        // 1. Scan Capability Inventory
         IItemHandler handler = player.getCapability(Capabilities.ItemHandler.ENTITY, null);
         if (handler != null) {
             for (int i = 0; i < handler.getSlots(); i++) {
-                ItemStack stack = handler.getStackInSlot(i);
-                if (ItemMatcher.matches(stack, targetStack)) {
-                    count += stack.getCount();
-                }
+                addToSnapshot(snapshot, handler.getStackInSlot(i));
             }
         } else {
-            // Fallback for vanilla inventory
-            for (ItemStack stack : player.getInventory().items) {
-                if (ItemMatcher.matches(stack, targetStack)) count += stack.getCount();
-            }
-            for (ItemStack stack : player.getInventory().offhand) {
-                if (ItemMatcher.matches(stack, targetStack)) count += stack.getCount();
-            }
+            // Vanilla Fallback
+            for (ItemStack stack : player.getInventory().items) addToSnapshot(snapshot, stack);
+            for (ItemStack stack : player.getInventory().armor) addToSnapshot(snapshot, stack);
+            for (ItemStack stack : player.getInventory().offhand) addToSnapshot(snapshot, stack);
         }
 
-        // 2. Scan Curios (Backpacks/Accessories)
+        // 2. Scan Curios
         if (isCuriosLoaded) {
-            count += CuriosScanner.countItemsInCurios(player, goal);
+            // Note: CuriosScanner needs slight refactor to accept Map<StackKey, Integer>
+            // For now, inlining simple Curios scan to support the new Map type
+            CuriosScanner.scanCurios(player, snapshot);
         }
 
-        return count;
+        return snapshot;
+    }
+
+    private void addToSnapshot(Map<StackKey, Integer> snapshot, ItemStack stack) {
+        if (!stack.isEmpty()) {
+            // Wrap in StackKey for component-aware hashing
+            snapshot.merge(new StackKey(stack), stack.getCount(), Integer::sum);
+        }
     }
 }

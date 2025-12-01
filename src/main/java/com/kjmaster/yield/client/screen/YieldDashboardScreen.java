@@ -1,7 +1,5 @@
 package com.kjmaster.yield.client.screen;
 
-import com.kjmaster.yield.client.screen.HudEditorScreen;
-import com.kjmaster.yield.client.screen.ItemSelectionScreen;
 import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
@@ -62,15 +60,18 @@ public class YieldDashboardScreen extends Screen {
     // Layouts
     private LinearLayout sidebarFooterLayout;
     private LinearLayout headerButtonsLayout;
+    private final GridLayoutManager gridLayout = new GridLayoutManager();
 
     // --- Modal Widgets ---
     private EditBox goalAmountInput;
+    private Button strictToggleButton;
     private Button modalSaveButton;
     private Button modalCancelButton;
 
     // --- State ---
     private ProjectGoal hoveredGoal = null;
     private ProjectGoal editingGoal = null;
+    private boolean tempStrictState = false;
     private boolean jeiLoaded = false;
 
     public YieldDashboardScreen() {
@@ -86,8 +87,6 @@ public class YieldDashboardScreen extends Screen {
         this.headerButtonsLayout = LinearLayout.horizontal().spacing(4);
 
         // 2. Initialize Sidebar Widgets (Bottom Up order for layout)
-
-        // XP Toggle
         this.xpToggleButton = Button.builder(Component.literal("XP"), btn -> {
             YieldProject p = getSelectedProject();
             if (p != null) {
@@ -97,12 +96,10 @@ public class YieldDashboardScreen extends Screen {
             }
         }).width(SIDEBAR_WIDTH - 10).build();
 
-        // Move HUD
         this.moveHudButton = Button.builder(Component.translatable("yield.label.move_hud"), btn -> {
             this.minecraft.setScreen(new HudEditorScreen(this));
         }).width(SIDEBAR_WIDTH - 10).build();
 
-        // New Project
         this.newProjectButton = Button.builder(Component.translatable("yield.label.new_project"), btn -> {
             ProjectManager.get().createProject("New Project");
             this.refreshList();
@@ -112,14 +109,10 @@ public class YieldDashboardScreen extends Screen {
             }
         }).width(SIDEBAR_WIDTH - 10).build();
 
-        // Add to Sidebar Layout (Order: XP -> Move -> New Project)
-        // We actually want them Top-to-Bottom visually: XP, then Move, then New Project (at bottom)
-        // But LinearLayout adds them in order.
         this.sidebarFooterLayout.addChild(this.xpToggleButton);
         this.sidebarFooterLayout.addChild(this.moveHudButton);
         this.sidebarFooterLayout.addChild(this.newProjectButton);
 
-        // Register Sidebar widgets
         this.addRenderableWidget(this.xpToggleButton);
         this.addRenderableWidget(this.moveHudButton);
         this.addRenderableWidget(this.newProjectButton);
@@ -135,12 +128,10 @@ public class YieldDashboardScreen extends Screen {
         this.deleteButton = Button.builder(Component.translatable("yield.label.delete"), btn -> deleteSelected())
                 .width(60).build();
 
-        // Add to Header Layout
         this.headerButtonsLayout.addChild(this.startStopButton);
         this.headerButtonsLayout.addChild(this.addGoalButton);
         this.headerButtonsLayout.addChild(this.deleteButton);
 
-        // Register Header widgets
         this.addRenderableWidget(this.startStopButton);
         this.addRenderableWidget(this.addGoalButton);
         this.addRenderableWidget(this.deleteButton);
@@ -165,6 +156,12 @@ public class YieldDashboardScreen extends Screen {
         this.goalAmountInput = new EditBox(this.font, 0, 0, 100, 20, Component.translatable("yield.label.amount"));
         this.goalAmountInput.setFilter(s -> s.matches("\\d*"));
 
+        this.strictToggleButton = Button.builder(Component.literal("Strict"), btn -> {
+            this.tempStrictState = !this.tempStrictState;
+            updateStrictButtonState();
+        }).bounds(0, 0, 100, 20).build();
+        this.strictToggleButton.visible = false;
+
         this.modalSaveButton = Button.builder(Component.translatable("yield.label.save"), btn -> saveGoalEdit()).build();
         this.modalCancelButton = Button.builder(Component.translatable("yield.label.cancel"), btn -> closeGoalEditor()).build();
 
@@ -175,55 +172,43 @@ public class YieldDashboardScreen extends Screen {
         this.repositionElements();
     }
 
-    /**
-     * UI Polish: Using Layout Managers to handle positioning
-     */
+    private void updateStrictButtonState() {
+        String state = tempStrictState ? "ON" : "OFF";
+        int color = tempStrictState ? 0xFF55FF55 : 0xFFAAAAAA;
+        this.strictToggleButton.setMessage(Component.literal("Strict: " + state).withColor(color));
+    }
+
     @Override
     protected void repositionElements() {
         // 1. Arrange Sidebar Footer
         this.sidebarFooterLayout.arrangeElements();
-
         int sidebarFooterHeight = this.sidebarFooterLayout.getHeight();
-        int sidebarFooterY = this.height - sidebarFooterHeight - 5; // 5px padding from bottom
-
+        int sidebarFooterY = this.height - sidebarFooterHeight - 5;
         this.sidebarFooterLayout.setPosition(5, sidebarFooterY);
 
-        // 2. Resize Project List to fit above footer
+        // 2. Resize Project List
         int listBottom = sidebarFooterY - 10;
         this.projectList.updateSizeAndPosition(SIDEBAR_WIDTH, listBottom, 0);
         this.projectList.setPosition(0, 0);
 
         // 3. Arrange Header Buttons
         this.headerButtonsLayout.arrangeElements();
-
         int contentRight = getContentRight();
         int buttonsWidth = this.headerButtonsLayout.getWidth();
-
-        // Calculate ideal position (Right Aligned)
         int idealX = contentRight - buttonsWidth - PADDING;
-
-        // FIX: Clamp X position so it never overlaps the Sidebar
         int minX = SIDEBAR_WIDTH + PADDING;
         int buttonsX = Math.max(minX, idealX);
-
         int topY = 8;
-
         this.headerButtonsLayout.setPosition(buttonsX, topY);
 
-        // 4. Position & Resize Name Input (Dynamic)
+        // 4. Position Name Input
         int contentLeft = SIDEBAR_WIDTH + PADDING;
-
-        // The input lives in the space between the Sidebar and the Buttons
         int inputAvailableWidth = buttonsX - contentLeft - PADDING;
-
         this.nameInput.setPosition(contentLeft, topY);
-
-        // Smart Hiding: If space is too small (buttons pushed all the way left), hide input
         if (inputAvailableWidth < 50) {
             this.nameInput.visible = false;
             this.nameInput.setWidth(0);
         } else {
-            // Only update width if visible (visibility handled in updateWidgetStates)
             this.nameInput.setWidth(inputAvailableWidth);
         }
 
@@ -231,18 +216,40 @@ public class YieldDashboardScreen extends Screen {
         if (editingGoal != null) {
             int cx = this.width / 2;
             int cy = this.height / 2;
-            this.goalAmountInput.setPosition(cx - 50, cy - 10);
+
+            // Input (Amount) - Moved Up
+            this.goalAmountInput.setPosition(cx - 50, cy - 25);
             this.goalAmountInput.setWidth(100);
-            this.modalSaveButton.setPosition(cx - 55, cy + 15);
+
+            // Strict Toggle - Center
+            this.strictToggleButton.setPosition(cx - 50, cy);
+            this.strictToggleButton.setWidth(100);
+
+            // Buttons - Moved Down
+            this.modalSaveButton.setPosition(cx - 55, cy + 30);
             this.modalSaveButton.setWidth(50);
-            this.modalCancelButton.setPosition(cx + 5, cy + 15);
+            this.modalCancelButton.setPosition(cx + 5, cy + 30);
             this.modalCancelButton.setWidth(50);
         }
 
         updateWidgetStates();
-    }
 
-    // --- Standard Methods (Unchanged Logic, mostly) ---
+        // 6. Update Grid Layout Cache
+        YieldProject p = getSelectedProject();
+        if (p != null) {
+            int left = SIDEBAR_WIDTH + PADDING;
+            int top = TOP_BAR_HEIGHT + 15;
+            int rightLimit = getContentRight() - PADDING;
+            int bottomLimit = this.height - 10;
+
+            gridLayout.update(
+                    left, top,
+                    rightLimit - left, bottomLimit - top,
+                    18, 4,
+                    p.getGoals().size()
+            );
+        }
+    }
 
     private void openItemSelector() {
         if (getSelectedProject() == null) return;
@@ -251,11 +258,20 @@ public class YieldDashboardScreen extends Screen {
 
     private void openGoalEditor(ProjectGoal goal) {
         this.editingGoal = goal;
+
+        // Init Input
         this.goalAmountInput.setValue(String.valueOf(goal.getTargetAmount()));
         this.goalAmountInput.setVisible(true);
         this.goalAmountInput.setEditable(true);
+
+        // Init Strict Toggle
+        this.tempStrictState = goal.isStrict();
+        updateStrictButtonState();
+        this.strictToggleButton.visible = true;
+
         this.modalSaveButton.visible = true;
         this.modalCancelButton.visible = true;
+
         setMainUiActive(false);
         this.setFocused(this.goalAmountInput);
         this.goalAmountInput.setFocused(true);
@@ -265,6 +281,7 @@ public class YieldDashboardScreen extends Screen {
     private void closeGoalEditor() {
         this.editingGoal = null;
         this.goalAmountInput.setVisible(false);
+        this.strictToggleButton.visible = false; // Hide Toggle
         this.modalSaveButton.visible = false;
         this.modalCancelButton.visible = false;
         this.goalAmountInput.setFocused(false);
@@ -285,12 +302,14 @@ public class YieldDashboardScreen extends Screen {
             try {
                 int amount = Integer.parseInt(this.goalAmountInput.getValue());
                 editingGoal.setTargetAmount(Math.max(1, amount));
+                editingGoal.setStrict(this.tempStrictState); // Save strict state
                 ProjectManager.get().save();
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
         closeGoalEditor();
     }
-
+    
     public int getContentRight() {
         return this.width - (jeiLoaded ? JEI_WIDTH : 0);
     }
@@ -312,7 +331,6 @@ public class YieldDashboardScreen extends Screen {
     public void handleJeiDrop(net.minecraft.world.item.ItemStack stack) {
         YieldProject project = getSelectedProject();
         if (project == null) return;
-
         ProjectGoal targetGoal = null;
         for (ProjectGoal g : project.getGoals()) {
             if (g.getItem() == stack.getItem()) {
@@ -320,12 +338,10 @@ public class YieldDashboardScreen extends Screen {
                 break;
             }
         }
-
         if (targetGoal == null) {
             targetGoal = ProjectGoal.fromStack(stack, 64);
             project.addGoal(targetGoal);
         }
-
         ProjectManager.get().save();
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
         openGoalEditor(targetGoal);
@@ -334,9 +350,8 @@ public class YieldDashboardScreen extends Screen {
     private void toggleTracking() {
         YieldProject p = getSelectedProject();
         if (p == null) return;
-        if (SessionTracker.get().isRunning()) {
-            SessionTracker.get().stopSession();
-        } else {
+        if (SessionTracker.get().isRunning()) SessionTracker.get().stopSession();
+        else {
             ProjectManager.get().setActiveProject(p);
             SessionTracker.get().startSession();
         }
@@ -346,32 +361,19 @@ public class YieldDashboardScreen extends Screen {
     private void deleteSelected() {
         YieldProject p = getSelectedProject();
         if (p != null) {
-            int index = -1;
-            List<ProjectEntry> children = this.projectList.children();
-            for (int i = 0; i < children.size(); i++) {
-                if (children.get(i).project == p) {
-                    index = i;
-                    break;
-                }
-            }
             ProjectManager.get().deleteProject(p);
             refreshList();
-            if (!this.projectList.children().isEmpty()) {
-                int newIndex = Math.min(index, this.projectList.children().size() - 1);
-                newIndex = Math.max(0, newIndex);
-                this.projectList.setSelected(this.projectList.children().get(newIndex));
-            }
+            if (!this.projectList.children().isEmpty())
+                this.projectList.setSelected(this.projectList.children().getFirst());
             updateWidgetStates();
         }
     }
 
     private void restoreSelection() {
         Optional<YieldProject> active = ProjectManager.get().getActiveProject();
-        if (active.isPresent()) {
-            this.projectList.selectProject(active.get());
-        } else if (!this.projectList.children().isEmpty()) {
+        if (active.isPresent()) this.projectList.selectProject(active.get());
+        else if (!this.projectList.children().isEmpty())
             this.projectList.setSelected(this.projectList.children().getFirst());
-        }
     }
 
     public void refreshList() {
@@ -380,34 +382,24 @@ public class YieldDashboardScreen extends Screen {
 
     private void updateWidgetStates() {
         if (editingGoal != null) return;
-
         YieldProject p = getSelectedProject();
         boolean hasSel = (p != null);
-
         this.xpToggleButton.visible = hasSel;
         if (hasSel) {
             String status = p.shouldTrackXp() ? "ON" : "OFF";
             int color = p.shouldTrackXp() ? 0xFF55FF55 : 0xFFAAAAAA;
-            this.xpToggleButton.setMessage(
-                    Component.literal("Track XP: " + status).withColor(color)
-            );
+            this.xpToggleButton.setMessage(Component.literal("Track XP: " + status).withColor(color));
         }
-
         if (this.nameInput.getWidth() > 0) {
             this.nameInput.visible = hasSel;
             this.nameInput.setEditable(hasSel);
-            if (hasSel && !this.nameInput.getValue().equals(p.getName())) {
-                this.nameInput.setValue(p.getName());
-            }
+            if (hasSel && !this.nameInput.getValue().equals(p.getName())) this.nameInput.setValue(p.getName());
         } else {
-            // Ensure invisible if width is 0 (from layout logic)
             this.nameInput.visible = false;
         }
-
         this.startStopButton.visible = hasSel;
         this.deleteButton.visible = hasSel;
         this.addGoalButton.visible = hasSel;
-
         if (hasSel && SessionTracker.get().isRunning() && ProjectManager.get().getActiveProject().isPresent()) {
             boolean isActive = ProjectManager.get().getActiveProject().get() == p;
             this.startStopButton.setMessage(isActive ? Component.translatable("yield.label.stop") : Component.translatable("yield.label.switch"));
@@ -451,24 +443,27 @@ public class YieldDashboardScreen extends Screen {
             gfx.fill(0, 0, this.width, this.height, COL_MODAL_DIM);
             int cx = this.width / 2;
             int cy = this.height / 2;
-            int mw = 120;
-            int mh = 80;
+
+            // Expanded Modal Box
+            int mw = 130;
+            int mh = 110;
             int mx = cx - mw / 2;
             int my = cy - mh / 2;
+
             gfx.fill(mx, my, mx + mw, my + mh, 0xFF303030);
             gfx.renderOutline(mx, my, mw, mh, 0xFFFFFFFF);
+
             gfx.drawCenteredString(this.font, Component.translatable("yield.label.set_goal_amount"), cx, my + 10, 0xFFFFFFFF);
+
             this.goalAmountInput.render(gfx, mouseX, mouseY, partialTick);
+            this.strictToggleButton.render(gfx, mouseX, mouseY, partialTick); // Render Toggle
             this.modalSaveButton.render(gfx, mouseX, mouseY, partialTick);
             this.modalCancelButton.render(gfx, mouseX, mouseY, partialTick);
+
             gfx.pose().popPose();
         } else if (this.hoveredGoal != null) {
             renderSmartTooltip(gfx, mouseX, mouseY, this.hoveredGoal);
         }
-    }
-
-    @Override
-    public void renderBackground(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
     }
 
     private void renderProjectGrid(GuiGraphics gfx, int mouseX, int mouseY, YieldProject project) {
@@ -495,61 +490,45 @@ public class YieldDashboardScreen extends Screen {
         }
 
         gfx.enableScissor(left, top, rightLimit, bottomLimit);
-        int slotSize = 18;
-        int gap = 4;
-        int availableWidth = rightLimit - left;
-        int cols = Math.max(1, availableWidth / (slotSize + gap));
 
-        int col = 0;
-        int row = 0;
+        List<Rect2i> rects = gridLayout.getRects();
+        int count = Math.min(goals.size(), rects.size());
 
-        for (ProjectGoal goal : goals) {
-            int x = left + col * (slotSize + gap);
-            int y = top + row * (slotSize + gap);
+        for (int i = 0; i < count; i++) {
+            ProjectGoal goal = goals.get(i);
+            Rect2i r = rects.get(i);
+            int x = r.getX();
+            int y = r.getY();
+            int slotSize = r.getWidth();
 
-            if (x + slotSize > rightLimit) {
-                col = 0;
-                row++;
-                x = left;
-                y = top + row * (slotSize + gap);
+            boolean isHovered = mouseX >= x && mouseX < x + slotSize && mouseY >= y && mouseY < y + slotSize;
+            int bgColor = isHovered ? COL_GRID_HOVER : COL_GRID_ITEM_BG;
+            gfx.fill(x, y, x + slotSize, y + slotSize, bgColor);
+
+            GoalTracker tracker = SessionTracker.get().getTracker(goal);
+            float progress = tracker.getProgress();
+
+            if (progress > 0) {
+                gfx.pose().pushPose();
+                gfx.pose().translate(0, 0, 200);
+                int borderColor;
+                if (progress >= 1.0f) borderColor = 0xFFFFD700;
+                else if (progress > 0.75f) borderColor = 0xFF55FF55;
+                else if (progress > 0.25f) borderColor = 0xFFFFFF55;
+                else borderColor = 0xFFFF5555;
+                int maxBarW = 16;
+                int barWidth = (int) (maxBarW * progress);
+                int barY = y + 16;
+                gfx.fill(x + 1, barY, x + 1 + maxBarW, barY + 1, 0xFF000000);
+                gfx.fill(x + 1, barY, x + 1 + barWidth, barY + 1, borderColor);
+                gfx.pose().popPose();
             }
 
-            if (y + slotSize < bottomLimit) {
-                boolean isHovered = mouseX >= x && mouseX < x + slotSize && mouseY >= y && mouseY < y + slotSize;
-                int bgColor = isHovered ? COL_GRID_HOVER : COL_GRID_ITEM_BG;
-                gfx.fill(x, y, x + slotSize, y + slotSize, bgColor);
+            gfx.renderItem(goal.getRenderStack(), x + 1, y + 1);
+            gfx.renderItemDecorations(this.font, goal.getRenderStack(), x + 1, y + 1);
 
-                GoalTracker tracker = SessionTracker.get().getTracker(goal);
-                float progress = tracker.getProgress();
-
-                if (progress > 0) {
-                    gfx.pose().pushPose();
-                    gfx.pose().translate(0, 0, 200);
-                    int borderColor;
-                    if (progress >= 1.0f) borderColor = 0xFFFFD700;
-                    else if (progress > 0.75f) borderColor = 0xFF55FF55;
-                    else if (progress > 0.25f) borderColor = 0xFFFFFF55;
-                    else borderColor = 0xFFFF5555;
-                    int maxBarW = 16;
-                    int barWidth = (int) (maxBarW * progress);
-                    int barY = y + 16;
-                    gfx.fill(x + 1, barY, x + 1 + maxBarW, barY + 1, 0xFF000000);
-                    gfx.fill(x + 1, barY, x + 1 + barWidth, barY + 1, borderColor);
-                    gfx.pose().popPose();
-                }
-
-                gfx.renderItem(goal.getRenderStack(), x + 1, y + 1);
-                gfx.renderItemDecorations(this.font, goal.getRenderStack(), x + 1, y + 1);
-
-                if (isHovered && editingGoal == null) {
-                    this.hoveredGoal = goal;
-                }
-            }
-
-            col++;
-            if (col >= cols) {
-                col = 0;
-                row++;
+            if (isHovered && editingGoal == null) {
+                this.hoveredGoal = goal;
             }
         }
         gfx.disableScissor();
@@ -557,9 +536,11 @@ public class YieldDashboardScreen extends Screen {
 
     private void renderSmartTooltip(GuiGraphics gfx, int mouseX, int mouseY, ProjectGoal goal) {
         GoalTracker tracker = SessionTracker.get().getTracker(goal);
-
         List<Component> tooltip = new ArrayList<>();
         tooltip.add(Component.translatable(goal.getItem().getDescriptionId()).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+        if (goal.isStrict()) {
+            tooltip.add(Component.literal("[Strict Mode]").withStyle(ChatFormatting.RED));
+        }
         tooltip.add(Component.translatable("yield.tooltip.progress", tracker.getCurrentCount(), goal.getTargetAmount()).withStyle(ChatFormatting.GRAY));
 
         int rate = (int) tracker.getItemsPerHour();
@@ -570,16 +551,13 @@ public class YieldDashboardScreen extends Screen {
             int remaining = goal.getTargetAmount() - tracker.getCurrentCount();
             double hoursLeft = (double) remaining / rate;
             int minutes = (int) (hoursLeft * 60);
-
             String eta;
             if (minutes > 60) eta = String.format("%dh %dm", minutes / 60, minutes % 60);
             else eta = minutes + "m";
-
             tooltip.add(Component.translatable("yield.tooltip.eta", eta).withStyle(ChatFormatting.GRAY));
         } else if (tracker.getCurrentCount() >= goal.getTargetAmount()) {
             tooltip.add(Component.translatable("yield.tooltip.complete").withStyle(ChatFormatting.GOLD));
         }
-
         gfx.renderComponentTooltip(this.font, tooltip, mouseX, mouseY);
     }
 
@@ -590,6 +568,7 @@ public class YieldDashboardScreen extends Screen {
                 this.setFocused(this.goalAmountInput);
                 return true;
             }
+            if (this.strictToggleButton.mouseClicked(mouseX, mouseY, button)) return true; // Check Toggle Click
             if (this.modalSaveButton.mouseClicked(mouseX, mouseY, button)) return true;
             if (this.modalCancelButton.mouseClicked(mouseX, mouseY, button)) return true;
             return true;
@@ -604,45 +583,21 @@ public class YieldDashboardScreen extends Screen {
     }
 
     private boolean handleGridClick(double mouseX, double mouseY, int button) {
-        int left = SIDEBAR_WIDTH + PADDING;
-        int top = TOP_BAR_HEIGHT + 15;
-        int rightLimit = getContentRight() - PADDING;
-        int slotSize = 18;
-        int gap = 4;
-        int availableWidth = rightLimit - left;
-        int cols = Math.max(1, availableWidth / (slotSize + gap));
-
-        YieldProject p = getSelectedProject();
-        List<ProjectGoal> goals = p.getGoals();
-        int col = 0;
-        int row = 0;
-
-        for (ProjectGoal goal : goals) {
-            int x = left + col * (slotSize + gap);
-            int y = top + row * (slotSize + gap);
-
-            if (x + slotSize > rightLimit) {
-                col = 0;
-                row++;
-                x = left;
-                y = top + row * (slotSize + gap);
-            }
-
-            if (mouseX >= x && mouseX < x + slotSize && mouseY >= y && mouseY < y + slotSize) {
+        int index = gridLayout.getIndexAt(mouseX, mouseY);
+        if (index != -1) {
+            YieldProject p = getSelectedProject();
+            if (index < p.getGoals().size()) {
+                ProjectGoal goal = p.getGoals().get(index);
                 Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
 
-                if (button == 1) {
+                if (button == 1) { // Right Click
                     p.removeGoal(goal);
                     ProjectManager.get().save();
-                } else {
+                    repositionElements(); // Refresh grid
+                } else { // Left Click
                     openGoalEditor(goal);
                 }
                 return true;
-            }
-            col++;
-            if (col >= cols) {
-                col = 0;
-                row++;
             }
         }
         return false;
@@ -667,9 +622,7 @@ public class YieldDashboardScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
-        if (editingGoal != null) {
-            return this.goalAmountInput.charTyped(codePoint, modifiers);
-        }
+        if (editingGoal != null) return this.goalAmountInput.charTyped(codePoint, modifiers);
         return super.charTyped(codePoint, modifiers);
     }
 
@@ -734,13 +687,10 @@ public class YieldDashboardScreen extends Screen {
         @Override
         public void render(@NotNull GuiGraphics gfx, int idx, int top, int left, int width, int height, int mx, int my, boolean hover, float pt) {
             boolean selected = projectList.getSelected() == this;
-
             if (selected) {
                 gfx.fill(left, top, left + width - 4, top + height, 0xFF2A2A2A);
                 gfx.fill(left, top, left + 2, top + height, 0xFF00AAFF);
-            } else if (hover) {
-                gfx.fill(left, top, left + width - 4, top + height, 0xFF202020);
-            }
+            } else if (hover) gfx.fill(left, top, left + width - 4, top + height, 0xFF202020);
 
             Optional<YieldProject> active = ProjectManager.get().getActiveProject();
             if (active.isPresent() && active.get().getId().equals(project.getId())) {
@@ -753,10 +703,7 @@ public class YieldDashboardScreen extends Screen {
             String name = project.getName();
             int padding = 12;
             int availableWidth = width - (padding * 2);
-
-            if (font.width(name) > availableWidth) {
-                name = font.plainSubstrByWidth(name, availableWidth - 10) + "...";
-            }
+            if (font.width(name) > availableWidth) name = font.plainSubstrByWidth(name, availableWidth - 10) + "...";
             gfx.drawString(font, name, left + padding, top + (height - 9) / 2, color, false);
         }
 

@@ -6,11 +6,13 @@ import com.google.gson.JsonElement;
 import com.kjmaster.yield.Yield;
 import com.kjmaster.yield.project.YieldProject;
 import com.mojang.serialization.JsonOps;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.level.storage.LevelResource; // Needed for Save-Relative paths
+import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.fml.loading.FMLPaths;
+import org.apache.commons.codec.digest.DigestUtils;
 
 import java.io.File;
 import java.io.FileReader;
@@ -20,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 public class ProjectManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -38,7 +41,6 @@ public class ProjectManager {
         return INSTANCE;
     }
 
-    // ... (createProject, deleteProject, etc. remain the same) ...
     public void createProject(String name) {
         YieldProject project = new YieldProject(name);
         projects.add(project);
@@ -64,27 +66,29 @@ public class ProjectManager {
 
     private File getStorageFile() {
         Minecraft mc = Minecraft.getInstance();
+        String folderName;
         Path storageDir;
 
-        // Check for Integrated Server (Singleplayer)
         if (mc.getSingleplayerServer() != null) {
+            // Singleplayer: Use World Name (Level Name)
+            // This is safer than IP and unique per save.
             MinecraftServer server = mc.getSingleplayerServer();
             storageDir = server.getWorldPath(new LevelResource("yield"));
-        }
-        else {
-            // Multiplayer Fallback
+        } else {
+            // Multiplayer: Hash the IP to ensure safe filename
             ServerData serverData = mc.getCurrentServer();
-            String folderName = "unknown_server";
-
             if (serverData != null) {
-                folderName = serverData.ip.replaceAll("[^a-zA-Z0-9.\\-]", "_");
-            } else if (mc.getConnection() != null && mc.getConnection().getConnection().isMemoryConnection()) {
+                folderName = DigestUtils.sha256Hex(serverData.ip);
+            } else {
                 folderName = "local_fallback";
             }
 
+            // Sanitize for safety (though hash is safe, world name might not be entirely)
+            folderName = folderName.replaceAll("[^a-zA-Z0-9.\\-_]", "_");
+
             storageDir = FMLPaths.CONFIGDIR.get()
                     .resolve("yield")
-                    .resolve("servers")
+                    .resolve("saves")
                     .resolve(folderName);
         }
 
@@ -97,15 +101,24 @@ public class ProjectManager {
     }
 
     public void save() {
+        // 1. Prepare File and Data on Main Thread
+        // We resolve the file here to ensure we get the current context (World/Server)
         File file = getStorageFile();
-        try (FileWriter writer = new FileWriter(file)) {
-            YieldProject.CODEC.listOf()
-                    .encodeStart(JsonOps.INSTANCE, projects)
-                    .resultOrPartial(err -> Yield.LOGGER.error("Failed to encode projects: " + err))
-                    .ifPresent(json -> GSON.toJson(json, writer));
-        } catch (IOException e) {
-            Yield.LOGGER.error("Could not save Yield projects", e);
-        }
+
+        // Serialize to JSON on Main Thread to ensure thread safety with Registries/Items
+        YieldProject.CODEC.listOf()
+                .encodeStart(JsonOps.INSTANCE, projects)
+                .resultOrPartial(err -> Yield.LOGGER.error("Failed to encode projects: " + err))
+                .ifPresent(json -> {
+                    // 2. Write to Disk on Background Thread
+                    CompletableFuture.runAsync(() -> {
+                        try (FileWriter writer = new FileWriter(file)) {
+                            GSON.toJson(json, writer);
+                        } catch (IOException e) {
+                            Yield.LOGGER.error("Could not save Yield projects", e);
+                        }
+                    }, Util.ioPool()); // Use Minecraft's IO Pool
+                });
     }
 
     public void load() {

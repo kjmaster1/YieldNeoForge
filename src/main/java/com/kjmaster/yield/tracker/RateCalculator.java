@@ -1,50 +1,70 @@
 package com.kjmaster.yield.tracker;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.Arrays;
 
 public class RateCalculator {
-    private record GainEntry(long timestamp, int amount) {}
+    // 60 buckets, one for each second in the minute window
+    private final int[] buckets;
+    private final int windowSeconds;
 
-    private final Deque<GainEntry> history = new ArrayDeque<>();
-    private final long windowMillis;
-    private int currentSum = 0; // Optimization: Running sum
+    private long lastSecTimestamp = 0;
+    private int currentBucketIndex = 0;
+    private int runningSum = 0;
 
     public RateCalculator(int windowSeconds) {
-        this.windowMillis = windowSeconds * 1000L;
+        this.windowSeconds = windowSeconds;
+        this.buckets = new int[windowSeconds];
     }
 
     public void addGain(int amount) {
         if (amount <= 0) return;
-        long now = System.currentTimeMillis();
-        history.addLast(new GainEntry(now, amount));
-        currentSum += amount; // O(1) Add
-        prune(now);
+        tick(); // Ensure time is synced
+        buckets[currentBucketIndex] += amount;
+        runningSum += amount;
     }
 
-    private void prune(long now) {
-        long cutoff = now - windowMillis;
-        // O(k) where k is the number of expired entries (usually 0 or 1 per tick)
-        while (!history.isEmpty() && history.peekFirst().timestamp < cutoff) {
-            currentSum -= history.removeFirst().amount;
+    // Call this before reading rates or adding gains
+    private void tick() {
+        long nowSec = System.currentTimeMillis() / 1000;
+        if (lastSecTimestamp == 0) {
+            lastSecTimestamp = nowSec;
+            return;
         }
+
+        long diff = nowSec - lastSecTimestamp;
+        if (diff == 0) return; // Still in same second
+
+        // Zero out buckets for the seconds that passed
+        for (long i = 0; i < diff; i++) {
+            currentBucketIndex = (currentBucketIndex + 1) % windowSeconds;
+            // Subtract the old value leaving the window from the running sum
+            runningSum -= buckets[currentBucketIndex];
+            // Reset the bucket for the new second
+            buckets[currentBucketIndex] = 0;
+
+            // Optimization: If gap is huge (e.g. paused game), clear all
+            if (i >= windowSeconds) {
+                clear();
+                lastSecTimestamp = nowSec;
+                return;
+            }
+        }
+        lastSecTimestamp = nowSec;
     }
 
     public double getItemsPerHour() {
-        long now = System.currentTimeMillis();
-        prune(now); // Ensure data is strictly within the window
+        tick();
+        // Prevent division by zero or unrealistic rates at start of session
+        if (runningSum == 0) return 0.0;
 
-        if (history.isEmpty()) return 0.0;
-
-        // Calculate actual time span for accurate "Instant Rate" at start of session
-        long oldestTime = history.peekFirst().timestamp;
-        double effectiveSeconds = Math.max(1000, now - oldestTime) / 1000.0;
-
-        return (currentSum / effectiveSeconds) * 3600.0;
+        // Use max window for stability, or actual elapsed time if session just started
+        return runningSum * (3600.0 / windowSeconds);
     }
 
     public void clear() {
-        history.clear();
-        currentSum = 0;
+        Arrays.fill(buckets, 0);
+        runningSum = 0;
+        currentBucketIndex = 0;
+        lastSecTimestamp = 0;
     }
 }

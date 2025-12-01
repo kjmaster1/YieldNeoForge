@@ -4,8 +4,11 @@ import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.service.InventoryScanner;
+import com.kjmaster.yield.util.ItemMatcher;
+import com.kjmaster.yield.util.StackKey;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -128,9 +131,20 @@ public class SessionTracker {
     }
 
     private void updateTrackers(Player player, YieldProject project) {
+        // PERF: Scan inventory ONCE to build a snapshot
+        Map<StackKey, Integer> snapshot = scanner.scanInventory(player);
+
         for (ProjectGoal goal : project.getGoals()) {
             GoalTracker tracker = trackers.computeIfAbsent(goal, GoalTracker::new);
-            int currentCount = scanner.countItem(player, goal);
+            int currentCount = 0;
+
+            // Iterate snapshot to find matches
+            // This is efficient because snapshot size is small (inventory slots)
+            for (Map.Entry<StackKey, Integer> entry : snapshot.entrySet()) {
+                if (ItemMatcher.matches(entry.getKey().stack(), goal)) {
+                    currentCount += entry.getValue();
+                }
+            }
             tracker.update(currentCount);
         }
     }

@@ -35,5 +35,6 @@
   "yield.label.set_goal_amount": "Set Goal Amount",
   "yield.label.search_items": "Search Items...",
   "yield.label.move_hud": "Move Hud",
-  "yield.label.goals_empty": "Drag items from JEI or click '+ Goal' to begin."
+  "yield.label.goals_empty": "Drag items from JEI or click '+ Goal' to begin.",
+  "yield.title.select_project": "Select Project"
 }

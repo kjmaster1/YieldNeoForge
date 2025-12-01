@@ -102,28 +102,19 @@ public class ProjectManager {
     }
 
     public void save() {
-        // 1. Prepare File and Data on Main Thread
-        File file = getStorageFile();
+        DataResult<JsonElement> result = YieldProject.CODEC.listOf().encodeStart(JsonOps.INSTANCE, this.projects);
 
-        // SNAPSHOT: Create an immutable copy of the list on the Main Thread.
-        // This prevents ConcurrentModificationException if 'projects' is modified
-        // while the codec is iterating over it.
-        List<YieldProject> snapshot = List.copyOf(this.projects);
-
-        // Serialize the SNAPSHOT (not the live list) to JSON
-        YieldProject.CODEC.listOf()
-                .encodeStart(JsonOps.INSTANCE, snapshot)
-                .resultOrPartial(err -> Yield.LOGGER.error("Failed to encode projects: {}", err))
-                .ifPresent(json -> {
-                    // 2. Write to Disk on Background Thread
-                    CompletableFuture.runAsync(() -> {
-                        try (FileWriter writer = new FileWriter(file)) {
-                            GSON.toJson(json, writer);
-                        } catch (IOException e) {
-                            Yield.LOGGER.error("Could not save Yield projects", e);
-                        }
-                    }, Util.ioPool()); // Use Minecraft's IO Pool
-                });
+        result.resultOrPartial(Yield.LOGGER::error).ifPresent(json -> {
+            // 2. Pass the serialized JSON (which is now immutable data) to the thread.
+            CompletableFuture.runAsync(() -> {
+                File file = getStorageFile();
+                try (FileWriter writer = new FileWriter(file)) {
+                    GSON.toJson(json, writer);
+                } catch (IOException e) {
+                    Yield.LOGGER.error("Could not save Yield projects", e);
+                }
+            }, Util.ioPool());
+        });
     }
 
     public void load() {

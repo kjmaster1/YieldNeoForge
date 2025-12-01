@@ -34,17 +34,21 @@ public class RateCalculator {
         long diff = nowSec - lastSecTimestamp;
         if (diff == 0) return;
 
-        for (long i = 0; i < diff; i++) {
+        // Optimization: If the gap exceeds the window, the rate is effectively 0.
+        // Reset everything immediately without looping.
+        if (diff >= windowSeconds) {
+            clear(); // Resets buckets and runningSum
+            // Keep startTime to track session duration accurately,
+            // but reset lastSecTimestamp to now.
+            lastSecTimestamp = nowSec;
+            return;
+        }
+
+        // Small gap: Perform the rolling window update
+        for (int i = 0; i < diff; i++) {
             currentBucketIndex = (currentBucketIndex + 1) % windowSeconds;
             runningSum -= buckets[currentBucketIndex];
             buckets[currentBucketIndex] = 0;
-
-            // Optimization: If gap is huge (e.g. paused game), clear all
-            if (i >= windowSeconds) {
-                clear();
-                lastSecTimestamp = nowSec;
-                return;
-            }
         }
         lastSecTimestamp = nowSec;
     }

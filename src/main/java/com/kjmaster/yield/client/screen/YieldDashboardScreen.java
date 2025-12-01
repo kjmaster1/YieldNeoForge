@@ -11,6 +11,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.ObjectSelectionList;
+import net.minecraft.client.gui.layouts.FrameLayout;
 import net.minecraft.client.gui.layouts.LinearLayout;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
@@ -26,7 +27,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.fml.ModList;
 import org.jetbrains.annotations.NotNull;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -152,36 +152,54 @@ public class YieldDashboardScreen extends Screen {
 
     @Override
     protected void repositionElements() {
-        // 1. Arrange Sidebar Footer
+        int contentLeft = SIDEBAR_WIDTH + PADDING;
+        int contentRight = getContentRight();
+
+        // 1. Arrange Sidebar Footer using FrameLayout logic
         this.sidebarFooterLayout.arrangeElements();
-        int sidebarFooterHeight = this.sidebarFooterLayout.getHeight();
-        int sidebarFooterY = this.height - sidebarFooterHeight - 5;
-        this.sidebarFooterLayout.setPosition(5, sidebarFooterY);
+        FrameLayout.alignInRectangle(
+                this.sidebarFooterLayout,
+                0,
+                0,
+                SIDEBAR_WIDTH,
+                this.height - 5, // -5 for bottom padding
+                0.5f,
+                1.0f
+        );
 
         // 2. Resize Project List
-        int listBottom = sidebarFooterY - 10;
+        int listBottom = this.sidebarFooterLayout.getY() - 10;
         this.projectList.updateSizeAndPosition(SIDEBAR_WIDTH, listBottom, 0);
         this.projectList.setPosition(0, 0);
 
-        // 3. Arrange Header Buttons
+        // 3. Arrange Header Buttons (Manual Position with Clamping)
         this.headerButtonsLayout.arrangeElements();
-        int contentRight = getContentRight();
         int buttonsWidth = this.headerButtonsLayout.getWidth();
+
+        // Calculate "Float Right" position
         int idealX = contentRight - buttonsWidth - PADDING;
+
+        // CLAMP: Ensure we never go left of the sidebar, even if the window is tiny
         int minX = SIDEBAR_WIDTH + PADDING;
-        int buttonsX = Math.max(minX, idealX);
-        int topY = 8;
-        this.headerButtonsLayout.setPosition(buttonsX, topY);
+        int actualX = Math.max(minX, idealX);
+
+        this.headerButtonsLayout.setPosition(actualX, 8); // 8 is top padding
 
         // 4. Position Name Input
-        int contentLeft = SIDEBAR_WIDTH + PADDING;
-        int inputAvailableWidth = buttonsX - contentLeft - PADDING;
-        this.nameInput.setPosition(contentLeft, topY);
+        // It sits between the Sidebar and the Header Buttons
+        // We calculate available width based on where the buttons actually ended up
+        int inputAvailableWidth = actualX - contentLeft - PADDING;
+
+        this.nameInput.setX(contentLeft);
+        this.nameInput.setY(this.headerButtonsLayout.getY()); // Align top with buttons
+
+        // Hide input if there is no room (prevent it from rendering over buttons)
         if (inputAvailableWidth < 50) {
-            this.nameInput.visible = false;
             this.nameInput.setWidth(0);
+            this.nameInput.visible = false;
         } else {
             this.nameInput.setWidth(inputAvailableWidth);
+            this.nameInput.visible = true;
         }
 
         updateWidgetStates();
@@ -189,14 +207,13 @@ public class YieldDashboardScreen extends Screen {
         // 5. Update Grid Layout Cache
         YieldProject p = getSelectedProject();
         if (p != null) {
-            int left = SIDEBAR_WIDTH + PADDING;
             int top = TOP_BAR_HEIGHT + 15;
             int rightLimit = getContentRight() - PADDING;
             int bottomLimit = this.height - 10;
 
             gridLayout.update(
-                    left, top,
-                    rightLimit - left, bottomLimit - top,
+                    contentLeft, top,
+                    rightLimit - contentLeft, bottomLimit - top,
                     18, 4,
                     p.getGoals().size()
             );
@@ -262,10 +279,6 @@ public class YieldDashboardScreen extends Screen {
         Item displayItem = optionalItem.orElse(Items.BARRIER);
 
         // 2. Create the Goal
-        // targetAmount: default 64
-        // strict: false (implied by tag mode, but field exists)
-        // components: empty
-        // targetTag: THE TAG
         ProjectGoal goal = new ProjectGoal(
                 displayItem,
                 64,

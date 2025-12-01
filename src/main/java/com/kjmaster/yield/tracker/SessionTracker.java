@@ -7,7 +7,11 @@ import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.service.InventoryScanner;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -16,6 +20,11 @@ public class SessionTracker {
     private static SessionTracker INSTANCE;
 
     private final Map<ProjectGoal, GoalTracker> trackers = new ConcurrentHashMap<>();
+
+    // Optimization Caches
+    private final Map<Item, List<GoalTracker>> itemSpecificTrackers = new HashMap<>();
+    private final List<GoalTracker> tagTrackers = new ArrayList<>();
+
     private RateCalculator xpCalculator = new RateCalculator(15);
     private final InventoryScanner scanner = new InventoryScanner();
 
@@ -43,7 +52,11 @@ public class SessionTracker {
         this.xpCalculator = new RateCalculator(Config.RATE_WINDOW.get());
         isRunning = true;
         sessionStartTime = System.currentTimeMillis();
+
         trackers.clear();
+        itemSpecificTrackers.clear();
+        tagTrackers.clear();
+
         xpCalculator.clear();
         lastTotalXp = -1;
         isDirty = true;
@@ -129,9 +142,19 @@ public class SessionTracker {
     }
 
     private void updateTrackers(Player player, YieldProject project) {
-        // Ensure trackers exist for all goals
+        // Ensure trackers exist for all active goals
+        boolean changed = false;
         for (ProjectGoal goal : project.getGoals()) {
-            trackers.computeIfAbsent(goal, GoalTracker::new);
+            if (!trackers.containsKey(goal)) {
+                trackers.put(goal, new GoalTracker(goal));
+                changed = true;
+            }
+        }
+
+        // Rebuild Lookup Cache if needed (or if empty)
+        // Since this only happens when inventory is dirty (rare), rebuilding is cheap.
+        if (changed || (itemSpecificTrackers.isEmpty() && tagTrackers.isEmpty() && !trackers.isEmpty())) {
+            rebuildLookupCache();
         }
 
         // 1. Reset Temp Counts
@@ -139,12 +162,31 @@ public class SessionTracker {
             tracker.resetTempCount();
         }
 
-        // 2. Scan Inventory (Directly updates temp counts, no new objects allocated)
-        scanner.updateTrackerCounts(player, trackers.values());
+        // 2. Scan Inventory (Using Optimized Cache)
+        scanner.updateTrackerCounts(player, itemSpecificTrackers, tagTrackers);
 
         // 3. Commit Counts (Updates logic/rates/toasts)
         for (GoalTracker tracker : trackers.values()) {
             tracker.commitCounts();
+        }
+    }
+
+    private void rebuildLookupCache() {
+        itemSpecificTrackers.clear();
+        tagTrackers.clear();
+
+        for (GoalTracker tracker : trackers.values()) {
+            ProjectGoal goal = tracker.getGoal();
+
+            if (goal.getTargetTag().isPresent()) {
+                // Tag goals must be checked against everything (or filtered by tag, but iterating list is safer)
+                tagTrackers.add(tracker);
+            } else {
+                // Item goals can be hashed by Item Type
+                itemSpecificTrackers
+                        .computeIfAbsent(goal.getItem(), k -> new ArrayList<>())
+                        .add(tracker);
+            }
         }
     }
 

@@ -8,6 +8,7 @@ import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -17,27 +18,39 @@ import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class ItemSelectionScreen extends Screen {
 
     private final Screen parent;
-    private final Consumer<ItemStack> onSelect;
+    private final Consumer<ItemStack> onItemSelect;
+    private final Consumer<TagKey<Item>> onTagSelect;
+
     private EditBox searchBox;
     private ItemList itemList;
-    private final List<Item> allItems;
-    private Button cancelButton;
 
-    public ItemSelectionScreen(Screen parent, Consumer<ItemStack> onSelect) {
+    // Cache
+    private final List<Item> allItems;
+    private final List<TagKey<Item>> allTags;
+
+    public ItemSelectionScreen(Screen parent, Consumer<ItemStack> onItemSelect, Consumer<TagKey<Item>> onTagSelect) {
         super(Component.translatable("yield.label.search_items"));
         this.parent = parent;
-        this.onSelect = onSelect;
+        this.onItemSelect = onItemSelect;
+        this.onTagSelect = onTagSelect;
 
-        // Cache all items from registry, excluding air, sorted by name
+        // Cache Items
         this.allItems = BuiltInRegistries.ITEM.stream()
                 .filter(i -> i != Items.AIR)
                 .sorted(Comparator.comparing(item -> item.getDescription().getString()))
+                .collect(Collectors.toList());
+
+        // Cache Tags
+        this.allTags = BuiltInRegistries.ITEM.getTags()
+                .map(pair -> pair.getFirst())
+                .sorted(Comparator.comparing(tag -> tag.location().toString()))
                 .collect(Collectors.toList());
     }
 
@@ -50,7 +63,7 @@ public class ItemSelectionScreen extends Screen {
         this.itemList = new ItemList(this.minecraft, this.width, this.height, 50, this.height - 40);
         this.addRenderableWidget(itemList);
 
-        this.cancelButton = this.addRenderableWidget(Button.builder(Component.translatable("yield.label.cancel"), btn -> onClose())
+        this.addRenderableWidget(Button.builder(Component.translatable("yield.label.cancel"), btn -> onClose())
                 .bounds(this.width / 2 - 50, this.height - 30, 100, 20)
                 .build());
 
@@ -60,7 +73,7 @@ public class ItemSelectionScreen extends Screen {
 
     private void refreshList(String query) {
         if (this.itemList != null) {
-            this.itemList.updateItems(query);
+            this.itemList.update(query);
         }
     }
 
@@ -68,12 +81,13 @@ public class ItemSelectionScreen extends Screen {
     public void render(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(gfx, mouseX, mouseY, partialTick);
         super.render(gfx, mouseX, mouseY, partialTick);
-        gfx.drawCenteredString(this.font, this.title, this.width / 2, 8, 0xFFFFFF);
-    }
 
-    @Override
-    public void renderBackground(GuiGraphics guiGraphics, int i, int j, float f) {
-        this.renderTransparentBackground(guiGraphics);
+        // Draw Hint
+        if (this.searchBox.getValue().isEmpty()) {
+            gfx.drawCenteredString(this.font, "Type '#' to search tags", this.width / 2, 8, 0xFFAAAAAA);
+        } else {
+            gfx.drawCenteredString(this.font, this.title, this.width / 2, 8, 0xFFFFFF);
+        }
     }
 
     @Override
@@ -90,7 +104,7 @@ public class ItemSelectionScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    // --- Inner Classes for List ---
+    // --- Inner Classes ---
 
     class ItemList extends ObjectSelectionList<ItemRow> {
         private static final int SLOT_SIZE = 20;
@@ -100,23 +114,39 @@ public class ItemSelectionScreen extends Screen {
             super(mc, width, y1 - y0, y0, SLOT_SIZE + 2);
         }
 
-        public void updateItems(String query) {
+        public void update(String query) {
             this.clearEntries();
             String lowerQuery = query.toLowerCase();
+            boolean isTagSearch = lowerQuery.startsWith("#");
 
-            List<Item> filtered = allItems.stream()
-                    .filter(item -> {
-                        if (query.isEmpty()) return true;
-                        ItemStack stack = new ItemStack(item);
-                        return stack.getHoverName().getString().toLowerCase().contains(lowerQuery)
-                                || BuiltInRegistries.ITEM.getKey(item).toString().contains(lowerQuery);
-                    })
+            if (isTagSearch) {
+                updateTags(lowerQuery.substring(1)); // Remove '#'
+            } else {
+                updateItems(lowerQuery);
+            }
+        }
+
+        private void updateItems(String query) {
+            List<EntryWrapper> entries = allItems.stream()
+                    .filter(item -> query.isEmpty() || new ItemStack(item).getHoverName().getString().toLowerCase().contains(query))
+                    .limit(500) // Performance cap
+                    .map(EntryWrapper::new)
                     .toList();
+            buildRows(entries);
+        }
 
-            // Batch items into rows
-            List<Item> currentRow = new ArrayList<>();
-            for (Item item : filtered) {
-                currentRow.add(item);
+        private void updateTags(String query) {
+            List<EntryWrapper> entries = allTags.stream()
+                    .filter(tag -> query.isEmpty() || tag.location().toString().contains(query))
+                    .map(EntryWrapper::new)
+                    .toList();
+            buildRows(entries);
+        }
+
+        private void buildRows(List<EntryWrapper> entries) {
+            List<EntryWrapper> currentRow = new ArrayList<>();
+            for (EntryWrapper entry : entries) {
+                currentRow.add(entry);
                 if (currentRow.size() >= COLUMNS) {
                     this.addEntry(new ItemRow(new ArrayList<>(currentRow)));
                     currentRow.clear();
@@ -139,11 +169,37 @@ public class ItemSelectionScreen extends Screen {
         }
     }
 
-    class ItemRow extends ObjectSelectionList.Entry<ItemRow> {
-        private final List<Item> items;
+    // Wrapper to handle both Item and TagKey polymorphically for the list
+    class EntryWrapper {
+        final Item item; // Used for icon
+        final Optional<ItemStack> stack;
+        final Optional<TagKey<Item>> tag;
 
-        public ItemRow(List<Item> items) {
-            this.items = items;
+        // Constructor for Item
+        EntryWrapper(Item item) {
+            this.item = item;
+            this.stack = Optional.of(new ItemStack(item));
+            this.tag = Optional.empty();
+        }
+
+        // Constructor for Tag
+        EntryWrapper(TagKey<Item> tag) {
+            this.tag = Optional.of(tag);
+            this.stack = Optional.empty();
+
+            // Resolve a display item for the tag
+            var optionalHolder = BuiltInRegistries.ITEM.getTag(tag)
+                    .flatMap(holders -> holders.stream().findFirst());
+
+            this.item = optionalHolder.map(holder -> holder.value()).orElse(Items.BARRIER);
+        }
+    }
+
+    class ItemRow extends ObjectSelectionList.Entry<ItemRow> {
+        private final List<EntryWrapper> entries;
+
+        public ItemRow(List<EntryWrapper> entries) {
+            this.entries = entries;
         }
 
         @Override
@@ -153,8 +209,8 @@ public class ItemSelectionScreen extends Screen {
 
         @Override
         public void render(@NotNull GuiGraphics gfx, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean isHovered, float partialTick) {
-            for (int i = 0; i < items.size(); i++) {
-                Item item = items.get(i);
+            for (int i = 0; i < entries.size(); i++) {
+                EntryWrapper entry = entries.get(i);
                 int x = left + (i * ItemList.SLOT_SIZE);
                 int y = top;
 
@@ -165,29 +221,44 @@ public class ItemSelectionScreen extends Screen {
                     gfx.fill(x, y, x + ItemList.SLOT_SIZE, y + ItemList.SLOT_SIZE, 0x80FFFFFF);
                 }
 
-                ItemStack stack = new ItemStack(item);
-                gfx.renderItem(stack, x + 2, y + 2);
+                ItemStack renderStack = new ItemStack(entry.item);
+                gfx.renderItem(renderStack, x + 2, y + 2);
+
+                // If it's a tag, draw a tiny "#" overlay
+                if (entry.tag.isPresent()) {
+                    gfx.pose().pushPose();
+                    gfx.pose().translate(x + 10, y + 10, 200);
+                    gfx.pose().scale(0.5f, 0.5f, 1f);
+                    gfx.drawString(font, "#", 0, 0, 0xFF55FF55, true);
+                    gfx.pose().popPose();
+                }
 
                 if (hoverSlot) {
-                    gfx.renderTooltip(font, stack, mouseX, mouseY);
+                    if (entry.tag.isPresent()) {
+                        gfx.renderTooltip(font, Component.literal(entry.tag.get().location().toString()), mouseX, mouseY);
+                    } else {
+                        gfx.renderTooltip(font, renderStack, mouseX, mouseY);
+                    }
                 }
             }
         }
 
         @Override
         public boolean mouseClicked(double mouseX, double mouseY, int button) {
-            // Calculate which slot was clicked
-            ItemList list = ItemSelectionScreen.this.itemList;
-            int left = list.getRowLeft(); // Access protected/helper via simplified logic if needed, but usually getRowLeft() is distinct.
-            // Actually, ObjectSelectionList doesn't expose getRowLeft publicly easily, calculating locally:
-            int centeredLeft = ItemSelectionScreen.this.width / 2 - (list.getRowWidth() / 2);
-
+            int centeredLeft = ItemSelectionScreen.this.width / 2 - (ItemSelectionScreen.this.itemList.getRowWidth() / 2);
             double relX = mouseX - centeredLeft;
+
             if (relX >= 0) {
                 int col = (int) (relX / ItemList.SLOT_SIZE);
-                if (col >= 0 && col < items.size()) {
-                    Item item = items.get(col);
-                    ItemSelectionScreen.this.onSelect.accept(new ItemStack(item));
+                if (col >= 0 && col < entries.size()) {
+                    EntryWrapper entry = entries.get(col);
+
+                    if (entry.tag.isPresent()) {
+                        ItemSelectionScreen.this.onTagSelect.accept(entry.tag.get());
+                    } else {
+                        ItemSelectionScreen.this.onItemSelect.accept(new ItemStack(entry.item));
+                    }
+
                     ItemSelectionScreen.this.onClose();
                     return true;
                 }

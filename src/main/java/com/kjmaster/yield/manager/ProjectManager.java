@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.kjmaster.yield.Yield;
 import com.kjmaster.yield.project.YieldProject;
+import com.mojang.serialization.DataResult;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -102,13 +103,17 @@ public class ProjectManager {
 
     public void save() {
         // 1. Prepare File and Data on Main Thread
-        // We resolve the file here to ensure we get the current context (World/Server)
         File file = getStorageFile();
 
-        // Serialize to JSON on Main Thread to ensure thread safety with Registries/Items
+        // SNAPSHOT: Create an immutable copy of the list on the Main Thread.
+        // This prevents ConcurrentModificationException if 'projects' is modified
+        // while the codec is iterating over it.
+        List<YieldProject> snapshot = List.copyOf(this.projects);
+
+        // Serialize the SNAPSHOT (not the live list) to JSON
         YieldProject.CODEC.listOf()
-                .encodeStart(JsonOps.INSTANCE, projects)
-                .resultOrPartial(err -> Yield.LOGGER.error("Failed to encode projects: " + err))
+                .encodeStart(JsonOps.INSTANCE, snapshot)
+                .resultOrPartial(err -> Yield.LOGGER.error("Failed to encode projects: {}", err))
                 .ifPresent(json -> {
                     // 2. Write to Disk on Background Thread
                     CompletableFuture.runAsync(() -> {

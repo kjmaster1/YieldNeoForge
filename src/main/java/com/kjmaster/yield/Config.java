@@ -11,6 +11,9 @@ public class Config {
     public static final ModConfigSpec.IntValue OVERLAY_Y;
     public static final ModConfigSpec.ConfigValue<Integer> OVERLAY_COLOR;
 
+    // Tracker Settings
+    public static final ModConfigSpec.IntValue RATE_WINDOW;
+
     static {
         BUILDER.push("hud");
 
@@ -31,6 +34,13 @@ public class Config {
                 .define("overlayColor", 0x90000000);
 
         BUILDER.pop();
+
+        BUILDER.push("general");
+
+        RATE_WINDOW = BUILDER
+                .comment("The time window (in seconds) for rate calculation. Lower values update faster but fluctuate more.")
+                .defineInRange("rateWindow", 15, 1, 300); // Default reduced to 15s
+
         SPEC = BUILDER.build();
     }
 

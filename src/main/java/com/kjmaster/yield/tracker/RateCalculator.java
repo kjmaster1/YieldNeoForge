@@ -3,11 +3,11 @@ package com.kjmaster.yield.tracker;
 import java.util.Arrays;
 
 public class RateCalculator {
-    // 60 buckets, one for each second in the minute window
     private final int[] buckets;
     private final int windowSeconds;
 
     private long lastSecTimestamp = 0;
+    private long startTime = 0; // Track start for accurate initial rates
     private int currentBucketIndex = 0;
     private int runningSum = 0;
 
@@ -18,28 +18,25 @@ public class RateCalculator {
 
     public void addGain(int amount) {
         if (amount <= 0) return;
-        tick(); // Ensure time is synced
+        tick();
         buckets[currentBucketIndex] += amount;
         runningSum += amount;
     }
 
-    // Call this before reading rates or adding gains
     private void tick() {
         long nowSec = System.currentTimeMillis() / 1000;
         if (lastSecTimestamp == 0) {
             lastSecTimestamp = nowSec;
+            startTime = nowSec;
             return;
         }
 
         long diff = nowSec - lastSecTimestamp;
-        if (diff == 0) return; // Still in same second
+        if (diff == 0) return;
 
-        // Zero out buckets for the seconds that passed
         for (long i = 0; i < diff; i++) {
             currentBucketIndex = (currentBucketIndex + 1) % windowSeconds;
-            // Subtract the old value leaving the window from the running sum
             runningSum -= buckets[currentBucketIndex];
-            // Reset the bucket for the new second
             buckets[currentBucketIndex] = 0;
 
             // Optimization: If gap is huge (e.g. paused game), clear all
@@ -54,11 +51,17 @@ public class RateCalculator {
 
     public double getItemsPerHour() {
         tick();
-        // Prevent division by zero or unrealistic rates at start of session
         if (runningSum == 0) return 0.0;
 
-        // Use max window for stability, or actual elapsed time if session just started
-        return runningSum * (3600.0 / windowSeconds);
+        long nowSec = System.currentTimeMillis() / 1000;
+        // Calculate actual time active since last reset/start
+        long activeDuration = nowSec - startTime;
+
+        // Use the smaller of: Window Size OR Actual Time Passed
+        // This fixes the "Slow Start" issue.
+        double divisor = Math.min(windowSeconds, Math.max(1, activeDuration));
+
+        return runningSum * (3600.0 / divisor);
     }
 
     public void clear() {
@@ -66,5 +69,6 @@ public class RateCalculator {
         runningSum = 0;
         currentBucketIndex = 0;
         lastSecTimestamp = 0;
+        startTime = 0;
     }
 }

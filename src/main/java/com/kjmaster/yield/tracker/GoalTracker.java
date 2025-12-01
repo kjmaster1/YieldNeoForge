@@ -1,5 +1,6 @@
 package com.kjmaster.yield.tracker;
 
+import com.kjmaster.yield.Config;
 import com.kjmaster.yield.client.GoalToast;
 import com.kjmaster.yield.project.ProjectGoal;
 import net.minecraft.client.Minecraft;
@@ -15,9 +16,12 @@ public class GoalTracker {
     // Cache: Updated once per second, read every frame
     private double cachedRate = 0.0;
 
+    // Scanning Buffer (Prevents object allocation during scans)
+    private int tempCount = 0;
+
     public GoalTracker(ProjectGoal goal) {
         this.goal = goal;
-        this.calculator = new RateCalculator(60);
+        this.calculator = new RateCalculator(Config.RATE_WINDOW.get());
     }
 
     public void update(int newCount) {
@@ -37,6 +41,32 @@ public class GoalTracker {
         }
 
         this.currentCount = newCount;
+    }
+
+    // --- Scanning Buffer Methods ---
+
+    /**
+     * Resets the temporary scan count to zero.
+     * Call this before starting a new inventory scan.
+     */
+    public void resetTempCount() {
+        this.tempCount = 0;
+    }
+
+    /**
+     * Adds to the temporary scan count.
+     * Used by the InventoryScanner when a matching item is found.
+     */
+    public void incrementTempCount(int amount) {
+        this.tempCount += amount;
+    }
+
+    /**
+     * Commits the temporary count to the main logic.
+     * Call this after the inventory scan is complete.
+     */
+    public void commitCounts() {
+        update(this.tempCount);
     }
 
     /**

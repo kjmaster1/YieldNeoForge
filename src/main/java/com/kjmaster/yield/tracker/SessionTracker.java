@@ -1,14 +1,12 @@
 package com.kjmaster.yield.tracker;
 
+import com.kjmaster.yield.Config;
 import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.service.InventoryScanner;
-import com.kjmaster.yield.util.ItemMatcher;
-import com.kjmaster.yield.util.StackKey;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,10 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SessionTracker {
 
     private static SessionTracker INSTANCE;
-    private static final int RATE_WINDOW_SECONDS = 60;
 
     private final Map<ProjectGoal, GoalTracker> trackers = new ConcurrentHashMap<>();
-    private final RateCalculator xpCalculator = new RateCalculator(RATE_WINDOW_SECONDS);
+    private RateCalculator xpCalculator = new RateCalculator(15);
     private final InventoryScanner scanner = new InventoryScanner();
 
     private int lastTotalXp = -1;
@@ -43,6 +40,7 @@ public class SessionTracker {
     }
 
     public void startSession() {
+        this.xpCalculator = new RateCalculator(Config.RATE_WINDOW.get());
         isRunning = true;
         sessionStartTime = System.currentTimeMillis();
         trackers.clear();
@@ -131,21 +129,22 @@ public class SessionTracker {
     }
 
     private void updateTrackers(Player player, YieldProject project) {
-        // PERF: Scan inventory ONCE to build a snapshot
-        Map<StackKey, Integer> snapshot = scanner.scanInventory(player);
-
+        // Ensure trackers exist for all goals
         for (ProjectGoal goal : project.getGoals()) {
-            GoalTracker tracker = trackers.computeIfAbsent(goal, GoalTracker::new);
-            int currentCount = 0;
+            trackers.computeIfAbsent(goal, GoalTracker::new);
+        }
 
-            // Iterate snapshot to find matches
-            // This is efficient because snapshot size is small (inventory slots)
-            for (Map.Entry<StackKey, Integer> entry : snapshot.entrySet()) {
-                if (ItemMatcher.matches(entry.getKey().stack(), goal)) {
-                    currentCount += entry.getValue();
-                }
-            }
-            tracker.update(currentCount);
+        // 1. Reset Temp Counts
+        for (GoalTracker tracker : trackers.values()) {
+            tracker.resetTempCount();
+        }
+
+        // 2. Scan Inventory (Directly updates temp counts, no new objects allocated)
+        scanner.updateTrackerCounts(player, trackers.values());
+
+        // 3. Commit Counts (Updates logic/rates/toasts)
+        for (GoalTracker tracker : trackers.values()) {
+            tracker.commitCounts();
         }
     }
 

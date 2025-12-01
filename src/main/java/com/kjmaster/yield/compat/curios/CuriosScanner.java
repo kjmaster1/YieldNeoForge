@@ -1,17 +1,18 @@
 package com.kjmaster.yield.compat.curios;
 
-import com.kjmaster.yield.util.StackKey;
+import com.kjmaster.yield.tracker.GoalTracker;
+import com.kjmaster.yield.util.ItemMatcher;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.items.IItemHandler;
 import top.theillusivec4.curios.api.CuriosApi;
 
-import java.util.Map;
+import java.util.Collection;
 
 public class CuriosScanner {
 
-    public static void scanCurios(Player player, Map<StackKey, Integer> snapshot) {
+    public static void scanCurios(Player player, Collection<GoalTracker> activeTrackers) {
         // Get the Curios Inventory wrapper
         var curiosInvOpt = CuriosApi.getCuriosInventory(player);
         if (curiosInvOpt.isEmpty()) return;
@@ -22,19 +23,27 @@ public class CuriosScanner {
             ItemStack stack = curiosHandler.getStackInSlot(i);
             if (stack.isEmpty()) continue;
 
-            // 1. Add the Curio itself (e.g. holding a Totem)
-            snapshot.merge(new StackKey(stack), stack.getCount(), Integer::sum);
+            // 1. Check the Curio itself
+            checkAndIncrement(stack, activeTrackers);
 
             // 2. Check INSIDE the Curio (e.g. Backpacks)
-            // We check if the equipped item has an ItemHandler capability
             IItemHandler internalCap = stack.getCapability(Capabilities.ItemHandler.ITEM, null);
             if (internalCap != null) {
                 for (int j = 0; j < internalCap.getSlots(); j++) {
                     ItemStack internalStack = internalCap.getStackInSlot(j);
                     if (!internalStack.isEmpty()) {
-                        snapshot.merge(new StackKey(internalStack), internalStack.getCount(), Integer::sum);
+                        checkAndIncrement(internalStack, activeTrackers);
                     }
                 }
+            }
+        }
+    }
+
+    private static void checkAndIncrement(ItemStack stack, Collection<GoalTracker> activeTrackers) {
+        // O(Goals) check - usually very fast as active goals are few (<10)
+        for (GoalTracker tracker : activeTrackers) {
+            if (ItemMatcher.matches(stack, tracker.getGoal())) {
+                tracker.incrementTempCount(stack.getCount());
             }
         }
     }

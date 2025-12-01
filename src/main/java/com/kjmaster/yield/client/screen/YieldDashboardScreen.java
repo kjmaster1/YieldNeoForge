@@ -15,10 +15,15 @@ import net.minecraft.client.gui.layouts.LinearLayout;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.fml.ModList;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
@@ -43,13 +48,12 @@ public class YieldDashboardScreen extends Screen {
     private static final int COL_BORDER = 0xFF303030;
     private static final int COL_GRID_ITEM_BG = 0xFF222222;
     private static final int COL_GRID_HOVER = 0xFF353535;
-    private static final int COL_MODAL_DIM = 0xD0000000;
 
     // --- Widgets ---
     private ProjectList projectList;
     private EditBox nameInput;
 
-    // Buttons managed by layouts
+    // Buttons
     private Button startStopButton;
     private Button deleteButton;
     private Button newProjectButton;
@@ -62,16 +66,8 @@ public class YieldDashboardScreen extends Screen {
     private LinearLayout headerButtonsLayout;
     private final GridLayoutManager gridLayout = new GridLayoutManager();
 
-    // --- Modal Widgets ---
-    private EditBox goalAmountInput;
-    private Button strictToggleButton;
-    private Button modalSaveButton;
-    private Button modalCancelButton;
-
     // --- State ---
     private ProjectGoal hoveredGoal = null;
-    private ProjectGoal editingGoal = null;
-    private boolean tempStrictState = false;
     private boolean jeiLoaded = false;
 
     public YieldDashboardScreen() {
@@ -117,7 +113,6 @@ public class YieldDashboardScreen extends Screen {
         this.addRenderableWidget(this.moveHudButton);
         this.addRenderableWidget(this.newProjectButton);
 
-
         // 3. Initialize Header Widgets
         this.startStopButton = Button.builder(Component.translatable("yield.label.start"), btn -> toggleTracking())
                 .width(80).build();
@@ -136,7 +131,6 @@ public class YieldDashboardScreen extends Screen {
         this.addRenderableWidget(this.addGoalButton);
         this.addRenderableWidget(this.deleteButton);
 
-
         // 4. Initialize Other Widgets
         this.projectList = new ProjectList(this.minecraft, SIDEBAR_WIDTH, this.height, 0, ITEM_HEIGHT);
         this.addRenderableWidget(this.projectList);
@@ -151,31 +145,9 @@ public class YieldDashboardScreen extends Screen {
             }
         });
 
-
-        // 5. Initialize Modal (Hidden)
-        this.goalAmountInput = new EditBox(this.font, 0, 0, 100, 20, Component.translatable("yield.label.amount"));
-        this.goalAmountInput.setFilter(s -> s.matches("\\d*"));
-
-        this.strictToggleButton = Button.builder(Component.literal("Strict"), btn -> {
-            this.tempStrictState = !this.tempStrictState;
-            updateStrictButtonState();
-        }).bounds(0, 0, 100, 20).build();
-        this.strictToggleButton.visible = false;
-
-        this.modalSaveButton = Button.builder(Component.translatable("yield.label.save"), btn -> saveGoalEdit()).build();
-        this.modalCancelButton = Button.builder(Component.translatable("yield.label.cancel"), btn -> closeGoalEditor()).build();
-
-        // 6. Finalize setup
-        closeGoalEditor();
         this.refreshList();
         restoreSelection();
         this.repositionElements();
-    }
-
-    private void updateStrictButtonState() {
-        String state = tempStrictState ? "ON" : "OFF";
-        int color = tempStrictState ? 0xFF55FF55 : 0xFFAAAAAA;
-        this.strictToggleButton.setMessage(Component.literal("Strict: " + state).withColor(color));
     }
 
     @Override
@@ -212,29 +184,9 @@ public class YieldDashboardScreen extends Screen {
             this.nameInput.setWidth(inputAvailableWidth);
         }
 
-        // 5. Modal Positioning
-        if (editingGoal != null) {
-            int cx = this.width / 2;
-            int cy = this.height / 2;
-
-            // Input (Amount) - Moved Up
-            this.goalAmountInput.setPosition(cx - 50, cy - 25);
-            this.goalAmountInput.setWidth(100);
-
-            // Strict Toggle - Center
-            this.strictToggleButton.setPosition(cx - 50, cy);
-            this.strictToggleButton.setWidth(100);
-
-            // Buttons - Moved Down
-            this.modalSaveButton.setPosition(cx - 55, cy + 30);
-            this.modalSaveButton.setWidth(50);
-            this.modalCancelButton.setPosition(cx + 5, cy + 30);
-            this.modalCancelButton.setWidth(50);
-        }
-
         updateWidgetStates();
 
-        // 6. Update Grid Layout Cache
+        // 5. Update Grid Layout Cache
         YieldProject p = getSelectedProject();
         if (p != null) {
             int left = SIDEBAR_WIDTH + PADDING;
@@ -253,63 +205,13 @@ public class YieldDashboardScreen extends Screen {
 
     private void openItemSelector() {
         if (getSelectedProject() == null) return;
-        this.minecraft.setScreen(new ItemSelectionScreen(this, this::handleJeiDrop));
+        this.minecraft.setScreen(new ItemSelectionScreen(
+                this,
+                this::handleJeiDrop,   // Reuse existing item logic
+                this::handleTagSelect  // New Tag Logic
+        ));
     }
 
-    private void openGoalEditor(ProjectGoal goal) {
-        this.editingGoal = goal;
-
-        // Init Input
-        this.goalAmountInput.setValue(String.valueOf(goal.getTargetAmount()));
-        this.goalAmountInput.setVisible(true);
-        this.goalAmountInput.setEditable(true);
-
-        // Init Strict Toggle
-        this.tempStrictState = goal.isStrict();
-        updateStrictButtonState();
-        this.strictToggleButton.visible = true;
-
-        this.modalSaveButton.visible = true;
-        this.modalCancelButton.visible = true;
-
-        setMainUiActive(false);
-        this.setFocused(this.goalAmountInput);
-        this.goalAmountInput.setFocused(true);
-        repositionElements();
-    }
-
-    private void closeGoalEditor() {
-        this.editingGoal = null;
-        this.goalAmountInput.setVisible(false);
-        this.strictToggleButton.visible = false; // Hide Toggle
-        this.modalSaveButton.visible = false;
-        this.modalCancelButton.visible = false;
-        this.goalAmountInput.setFocused(false);
-        setMainUiActive(true);
-        updateWidgetStates();
-    }
-
-    private void setMainUiActive(boolean active) {
-        this.nameInput.active = active;
-        this.nameInput.setEditable(active);
-        this.startStopButton.active = active;
-        this.deleteButton.active = active;
-        this.newProjectButton.active = active;
-    }
-
-    private void saveGoalEdit() {
-        if (editingGoal != null) {
-            try {
-                int amount = Integer.parseInt(this.goalAmountInput.getValue());
-                editingGoal.setTargetAmount(Math.max(1, amount));
-                editingGoal.setStrict(this.tempStrictState); // Save strict state
-                ProjectManager.get().save();
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        closeGoalEditor();
-    }
-    
     public int getContentRight() {
         return this.width - (jeiLoaded ? JEI_WIDTH : 0);
     }
@@ -318,17 +220,15 @@ public class YieldDashboardScreen extends Screen {
         List<Rect2i> areas = new ArrayList<>();
         areas.add(new Rect2i(0, 0, SIDEBAR_WIDTH, this.height));
         areas.add(new Rect2i(0, 0, this.width, TOP_BAR_HEIGHT));
-        if (editingGoal != null) {
-            areas.add(new Rect2i(0, 0, this.width, this.height));
-        }
         return areas;
     }
 
+    // For JEI Integration
     public ProjectGoal getEditingGoal() {
-        return editingGoal;
+        return null; // Dashboard never edits directly now
     }
 
-    public void handleJeiDrop(net.minecraft.world.item.ItemStack stack) {
+    public void handleJeiDrop(ItemStack stack) {
         YieldProject project = getSelectedProject();
         if (project == null) return;
         ProjectGoal targetGoal = null;
@@ -344,7 +244,43 @@ public class YieldDashboardScreen extends Screen {
         }
         ProjectManager.get().save();
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
-        openGoalEditor(targetGoal);
+
+        // Open the editor for this new goal
+        this.minecraft.setScreen(new GoalEditScreen(this, targetGoal));
+    }
+
+    private void handleTagSelect(TagKey<Item> tag) {
+        YieldProject project = getSelectedProject();
+        if (project == null) return;
+
+        // 1. Resolve a display item for the tag (for the icon)
+        // If the tag is empty (rare), fallback to Barrier
+        var optionalItem = BuiltInRegistries.ITEM.getTag(tag)
+                .flatMap(holders -> holders.stream().findFirst())
+                .map(Holder::value);
+
+        Item displayItem = optionalItem.orElse(Items.BARRIER);
+
+        // 2. Create the Goal
+        // targetAmount: default 64
+        // strict: false (implied by tag mode, but field exists)
+        // components: empty
+        // targetTag: THE TAG
+        ProjectGoal goal = new ProjectGoal(
+                displayItem,
+                64,
+                false,
+                java.util.Optional.empty(),
+                java.util.Optional.of(tag)
+        );
+
+        project.addGoal(goal);
+        ProjectManager.get().save();
+
+        Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+
+        // Open editor immediately to let user set amount
+        this.minecraft.setScreen(new GoalEditScreen(this, goal));
     }
 
     private void toggleTracking() {
@@ -381,7 +317,6 @@ public class YieldDashboardScreen extends Screen {
     }
 
     private void updateWidgetStates() {
-        if (editingGoal != null) return;
         YieldProject p = getSelectedProject();
         boolean hasSel = (p != null);
         this.xpToggleButton.visible = hasSel;
@@ -409,7 +344,7 @@ public class YieldDashboardScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
+    public void render(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
         this.hoveredGoal = null;
 
         gfx.fillGradient(0, 0, this.width, this.height, COL_BG_TOP, COL_BG_BOT);
@@ -437,31 +372,7 @@ public class YieldDashboardScreen extends Screen {
             }
         }
 
-        if (editingGoal != null) {
-            gfx.pose().pushPose();
-            gfx.pose().translate(0, 0, 500);
-            gfx.fill(0, 0, this.width, this.height, COL_MODAL_DIM);
-            int cx = this.width / 2;
-            int cy = this.height / 2;
-
-            // Expanded Modal Box
-            int mw = 130;
-            int mh = 110;
-            int mx = cx - mw / 2;
-            int my = cy - mh / 2;
-
-            gfx.fill(mx, my, mx + mw, my + mh, 0xFF303030);
-            gfx.renderOutline(mx, my, mw, mh, 0xFFFFFFFF);
-
-            gfx.drawCenteredString(this.font, Component.translatable("yield.label.set_goal_amount"), cx, my + 10, 0xFFFFFFFF);
-
-            this.goalAmountInput.render(gfx, mouseX, mouseY, partialTick);
-            this.strictToggleButton.render(gfx, mouseX, mouseY, partialTick); // Render Toggle
-            this.modalSaveButton.render(gfx, mouseX, mouseY, partialTick);
-            this.modalCancelButton.render(gfx, mouseX, mouseY, partialTick);
-
-            gfx.pose().popPose();
-        } else if (this.hoveredGoal != null) {
+        if (this.hoveredGoal != null) {
             renderSmartTooltip(gfx, mouseX, mouseY, this.hoveredGoal);
         }
     }
@@ -527,7 +438,7 @@ public class YieldDashboardScreen extends Screen {
             gfx.renderItem(goal.getRenderStack(), x + 1, y + 1);
             gfx.renderItemDecorations(this.font, goal.getRenderStack(), x + 1, y + 1);
 
-            if (isHovered && editingGoal == null) {
+            if (isHovered) {
                 this.hoveredGoal = goal;
             }
         }
@@ -563,17 +474,6 @@ public class YieldDashboardScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (editingGoal != null) {
-            if (this.goalAmountInput.mouseClicked(mouseX, mouseY, button)) {
-                this.setFocused(this.goalAmountInput);
-                return true;
-            }
-            if (this.strictToggleButton.mouseClicked(mouseX, mouseY, button)) return true; // Check Toggle Click
-            if (this.modalSaveButton.mouseClicked(mouseX, mouseY, button)) return true;
-            if (this.modalCancelButton.mouseClicked(mouseX, mouseY, button)) return true;
-            return true;
-        }
-
         if (button == 0 || button == 1) {
             if (getSelectedProject() != null && mouseX > SIDEBAR_WIDTH && mouseX < getContentRight()) {
                 if (handleGridClick(mouseX, mouseY, button)) return true;
@@ -595,35 +495,12 @@ public class YieldDashboardScreen extends Screen {
                     ProjectManager.get().save();
                     repositionElements(); // Refresh grid
                 } else { // Left Click
-                    openGoalEditor(goal);
+                    this.minecraft.setScreen(new GoalEditScreen(this, goal));
                 }
                 return true;
             }
         }
         return false;
-    }
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (editingGoal != null) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                closeGoalEditor();
-                return true;
-            }
-            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                saveGoalEdit();
-                return true;
-            }
-            if (this.goalAmountInput.keyPressed(keyCode, scanCode, modifiers)) return true;
-            return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-
-    @Override
-    public boolean charTyped(char codePoint, int modifiers) {
-        if (editingGoal != null) return this.goalAmountInput.charTyped(codePoint, modifiers);
-        return super.charTyped(codePoint, modifiers);
     }
 
     public YieldProject getSelectedProject() {
@@ -664,12 +541,6 @@ public class YieldDashboardScreen extends Screen {
         @Override
         protected void renderListBackground(@NotNull GuiGraphics g) {
         }
-
-        @Override
-        public boolean mouseClicked(double mouseX, double mouseY, int button) {
-            if (editingGoal != null) return false;
-            return super.mouseClicked(mouseX, mouseY, button);
-        }
     }
 
     class ProjectEntry extends ObjectSelectionList.Entry<ProjectEntry> {
@@ -709,7 +580,6 @@ public class YieldDashboardScreen extends Screen {
 
         @Override
         public boolean mouseClicked(double mx, double my, int btn) {
-            if (editingGoal != null) return false;
             if (btn == 0) {
                 projectList.setSelected(this);
                 updateWidgetStates();

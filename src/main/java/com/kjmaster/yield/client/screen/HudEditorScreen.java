@@ -1,8 +1,9 @@
 package com.kjmaster.yield.client.screen;
 
 import com.kjmaster.yield.Config;
+import com.kjmaster.yield.YieldServiceRegistry;
+import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.client.YieldOverlay;
-import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.project.YieldProject;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -39,7 +40,7 @@ public class HudEditorScreen extends Screen {
 
         // FIX: Sanitize coordinates on open
         // If the window shrank since last time, pull the HUD back onscreen immediately
-        YieldProject displayProject = ProjectManager.get().getActiveProject().orElse(dummyProject);
+        YieldProject displayProject = YieldServiceRegistry.getProjectManager().getActiveProject().orElse(dummyProject);
         int w = 150;
         int h = YieldOverlay.calculateHeight(displayProject);
 
@@ -48,15 +49,16 @@ public class HudEditorScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {}
+    public void renderBackground(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    }
 
     @Override
     public void render(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
 
         gfx.fillGradient(0, 0, this.width, this.height, 0x40000000, 0x40000000);
-        gfx.drawCenteredString(this.font, "Drag the HUD to move. Press ESC to Cancel.", this.width / 2, 10, 0xFFFFFFFF);
+        gfx.drawCenteredString(this.font, "Drag the HUD to move. Press ESC to Cancel.", this.width / 2, 10, Theme.TEXT_PRIMARY);
 
-        YieldProject displayProject = ProjectManager.get().getActiveProject().orElse(dummyProject);
+        YieldProject displayProject = YieldServiceRegistry.getProjectManager().getActiveProject().orElse(dummyProject);
 
         // Use the new render method that takes explicit W/H
         int w = 150;
@@ -69,7 +71,7 @@ public class HudEditorScreen extends Screen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
-            YieldProject displayProject = ProjectManager.get().getActiveProject().orElse(dummyProject);
+            YieldProject displayProject = YieldServiceRegistry.getProjectManager().getActiveProject().orElse(dummyProject);
             int w = 150;
             int h = YieldOverlay.calculateHeight(displayProject);
 
@@ -86,7 +88,7 @@ public class HudEditorScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (isDragging) {
-            YieldProject displayProject = ProjectManager.get().getActiveProject().orElse(dummyProject);
+            YieldProject displayProject = YieldServiceRegistry.getProjectManager().getActiveProject().orElse(dummyProject);
             int w = 150;
             int h = YieldOverlay.calculateHeight(displayProject);
 

@@ -2,9 +2,6 @@ package com.kjmaster.yield.compat.jei;
 
 import com.kjmaster.yield.Yield;
 import com.kjmaster.yield.client.screen.YieldDashboardScreen;
-import com.kjmaster.yield.manager.ProjectManager;
-import com.kjmaster.yield.project.ProjectGoal;
-import com.kjmaster.yield.project.YieldProject;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.gui.handlers.IGhostIngredientHandler;
@@ -73,8 +70,10 @@ public class YieldJeiPlugin implements IModPlugin {
                 });
                 return targets;
             }
+
             @Override
-            public void onComplete() {}
+            public void onComplete() {
+            }
         });
     }
 
@@ -132,12 +131,39 @@ public class YieldJeiPlugin implements IModPlugin {
             }
         }
 
-        @Override public @NotNull Class<? extends Screen> screenClass() { return screenClass; }
-        @Override public int guiLeft() { return guiLeft; }
-        @Override public int guiTop() { return guiTop; }
-        @Override public int guiXSize() { return guiXSize; }
-        @Override public int guiYSize() { return guiYSize; }
-        @Override public int screenWidth() { return screenWidth; }
-        @Override public int screenHeight() { return screenHeight; }
+        @Override
+        public @NotNull Class<? extends Screen> screenClass() {
+            return screenClass;
+        }
+
+        @Override
+        public int guiLeft() {
+            return guiLeft;
+        }
+
+        @Override
+        public int guiTop() {
+            return guiTop;
+        }
+
+        @Override
+        public int guiXSize() {
+            return guiXSize;
+        }
+
+        @Override
+        public int guiYSize() {
+            return guiYSize;
+        }
+
+        @Override
+        public int screenWidth() {
+            return screenWidth;
+        }
+
+        @Override
+        public int screenHeight() {
+            return screenHeight;
+        }
     }
 }

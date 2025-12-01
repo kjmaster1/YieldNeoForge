@@ -1,5 +1,6 @@
 package com.kjmaster.yield.client.screen;
 
+import com.kjmaster.yield.client.Theme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -84,7 +85,7 @@ public class ItemSelectionScreen extends Screen {
 
         // Draw Hint
         if (this.searchBox.getValue().isEmpty()) {
-            gfx.drawCenteredString(this.font, "Type '#' to search tags", this.width / 2, 8, 0xFFAAAAAA);
+            gfx.drawCenteredString(this.font, "Type '#' to search tags", this.width / 2, 8, Theme.TEXT_SECONDARY);
         } else {
             gfx.drawCenteredString(this.font, this.title, this.width / 2, 8, 0xFFFFFF);
         }

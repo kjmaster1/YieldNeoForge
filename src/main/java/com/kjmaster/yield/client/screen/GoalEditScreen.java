@@ -1,11 +1,12 @@
 package com.kjmaster.yield.client.screen;
 
-import com.kjmaster.yield.manager.ProjectManager;
+import com.kjmaster.yield.YieldServiceRegistry;
+import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.project.ProjectGoal;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.Renderable; // Import Renderable
+import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.layouts.LinearLayout;
 import net.minecraft.client.gui.screens.Screen;
@@ -121,7 +122,7 @@ public class GoalEditScreen extends Screen {
 
     private Component getStrictMessage() {
         String status = strictState ? "ON" : "OFF";
-        int color = strictState ? 0xFF55FF55 : 0xFFAAAAAA;
+        int color = strictState ? 0xFF55FF55 : Theme.TEXT_SECONDARY;
         return Component.literal("Strict Mode: " + status).withColor(color);
     }
 
@@ -130,7 +131,7 @@ public class GoalEditScreen extends Screen {
             int amount = Integer.parseInt(this.amountInput.getValue());
             this.goal.setTargetAmount(Math.max(1, amount));
             this.goal.setStrict(this.strictState);
-            ProjectManager.get().save();
+            YieldServiceRegistry.getProjectManager().save();
         } catch (NumberFormatException ignored) {
         }
         onClose();

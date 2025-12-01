@@ -1,31 +1,68 @@
 package com.kjmaster.yield.util;
 
 import com.kjmaster.yield.project.ProjectGoal;
+import net.minecraft.core.component.DataComponentType;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.component.TypedDataComponent;
 import net.minecraft.world.item.ItemStack;
+
+import java.util.Objects;
 
 public class ItemMatcher {
     /**
      * Checks if the source stack matches the target goal.
-     * Supports Strict (Components), Tag (Any Item in Tag), and Fuzzy (Item Type) matching.
+     * Supports Smart Strict (Components ignoring Damage), Tag, and Fuzzy (Item Type) matching.
      */
     public static boolean matches(ItemStack source, ProjectGoal goal) {
         if (source.isEmpty()) return false;
 
-        // 1. Strict Mode: Checks Item Type AND Data Components (Enchants, Name, etc.)
-        // Highest priority: If strict is on, we demand an EXACT match.
-        if (goal.isStrict()) {
-            ItemStack target = goal.getRenderStack();
-            if (target.isEmpty()) return false;
-            return ItemStack.isSameItemSameComponents(source, target);
-        }
-
-        // 2. Tag Mode: Checks if item belongs to the configured Tag
-        // If a tag is defined (e.g. #minecraft:logs), match ANY item in that tag.
+        // 1. Tag Mode: Checks if item belongs to the configured Tag
+        // Check this first as it encompasses multiple Item Types
         if (goal.getTargetTag().isPresent()) {
             return source.is(goal.getTargetTag().get());
         }
 
-        // 3. Fuzzy Mode (Default): Checks Item Type only.
-        return source.is(goal.getItem());
+        // 2. Base Item Check (Required for both Fuzzy and Strict)
+        if (source.getItem() != goal.getItem()) {
+            return false;
+        }
+
+        // 3. Strict Mode: Checks Data Components
+        if (goal.isStrict()) {
+            return areComponentsEqualIgnoringDamage(source, goal.getRenderStack());
+        }
+
+        // 4. Fuzzy Mode: Item Type matched above
+        return true;
+    }
+
+    /**
+     * Compares components of two stacks but ignores the DAMAGE (Durability) component.
+     */
+    private static boolean areComponentsEqualIgnoringDamage(ItemStack a, ItemStack b) {
+        // If exact match (including damage), return true immediately (Fast path)
+        if (ItemStack.isSameItemSameComponents(a, b)) return true;
+
+        // Iterate over components of A and check against B
+        // Note: This is a bidirectional check to ensure B doesn't have extra components A lacks
+        return checkContains(a, b) && checkContains(b, a);
+    }
+
+    private static boolean checkContains(ItemStack stackA, ItemStack stackB) {
+        for (TypedDataComponent<?> component : stackA.getComponents()) {
+            DataComponentType<?> type = component.type();
+
+            // IGNORE Durability/Damage
+            if (type == DataComponents.DAMAGE) continue;
+
+            // Check if B has this component and if values are equal
+            if (!stackB.has(type)) return false;
+
+            Object valueA = component.value();
+            Object valueB = stackB.get(type);
+
+            if (!Objects.equals(valueA, valueB)) return false;
+        }
+        return true;
     }
 }

@@ -1,6 +1,7 @@
 package com.kjmaster.yield.client;
 
 import com.kjmaster.yield.Config;
+import com.kjmaster.yield.YieldServiceRegistry;
 import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
@@ -40,10 +41,10 @@ public class YieldOverlay implements LayeredDraw.Layer {
         if (!Config.OVERLAY_ENABLED.get()) return;
 
 
-        Optional<YieldProject> projectOpt = ProjectManager.get().getActiveProject();
+        Optional<YieldProject> projectOpt = YieldServiceRegistry.getProjectManager().getActiveProject();
         if (projectOpt.isEmpty()) return;
         YieldProject project = projectOpt.get();
-        boolean isPaused = !SessionTracker.get().isRunning();
+        boolean isPaused = !YieldServiceRegistry.getSessionTracker().isRunning();
 
         // 1. Calculate Size
         int width = 150;
@@ -85,7 +86,7 @@ public class YieldOverlay implements LayeredDraw.Layer {
         // --- Header Row ---
         int currentY = y + PADDING;
 
-        long durationSecs = SessionTracker.get().getSessionDuration() / 1000;
+        long durationSecs = YieldServiceRegistry.getSessionTracker().getSessionDuration() / 1000;
         String timeStr = String.format("%02d:%02d", durationSecs / 60, durationSecs % 60);
         int timeWidth = font.width(timeStr);
         gfx.drawString(font, Component.literal(timeStr), x + width - PADDING - timeWidth, currentY + 4, isPaused ? 0xFF666666 : 0xAAAAAA, true);
@@ -134,7 +135,7 @@ public class YieldOverlay implements LayeredDraw.Layer {
         gfx.renderItem(icon, x, y);
         gfx.drawString(font, Component.literal("Experience"), x + ICON_SIZE + 4, y + 4, XP_COLOR, true);
 
-        int xpRate = (int) SessionTracker.get().getXpPerHour();
+        int xpRate = (int) YieldServiceRegistry.getSessionTracker().getXpPerHour();
         if (xpRate > 0) {
             String rateStr = xpRate + " XP/h";
             int rateWidth = font.width(rateStr);
@@ -157,7 +158,7 @@ public class YieldOverlay implements LayeredDraw.Layer {
         ItemStack icon = goal.getRenderStack();
         gfx.renderItem(icon, x, y);
 
-        GoalTracker tracker = SessionTracker.get().getTracker(goal);
+        GoalTracker tracker = YieldServiceRegistry.getSessionTracker().getTracker(goal);
 
         String progress = String.format("%d/%d", tracker.getCurrentCount(), goal.getTargetAmount());
 

@@ -1,5 +1,9 @@
 package com.kjmaster.yield.client.screen;
 
+import com.kjmaster.yield.YieldServiceRegistry;
+import com.kjmaster.yield.api.IProjectManager;
+import com.kjmaster.yield.api.ISessionTracker;
+import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
@@ -39,7 +43,7 @@ public class ProjectSelectionScreen extends Screen {
         super(Component.translatable("yield.title.select_project"));
         this.parent = parent;
         this.stackToTrack = stackToTrack;
-        this.projects = ProjectManager.get().getProjects();
+        this.projects = YieldServiceRegistry.getProjectManager().getProjects();
     }
 
     @Override
@@ -126,11 +130,10 @@ public class ProjectSelectionScreen extends Screen {
     private void selectProject(YieldProject project) {
         // Add goal to the selected project
         project.addGoal(ProjectGoal.fromStack(stackToTrack, stackToTrack.getCount()));
-        ProjectManager.get().save();
 
         // Set active and start session
-        ProjectManager.get().setActiveProject(project);
-        SessionTracker.get().startSession();
+        YieldServiceRegistry.getProjectManager().setActiveProject(project);
+        YieldServiceRegistry.getSessionTracker().startSession();
 
         // Play success sound and close
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
@@ -168,7 +171,7 @@ public class ProjectSelectionScreen extends Screen {
         gfx.pose().translate(0, 0, 600);
 
         // Draw Title inside the box
-        gfx.drawCenteredString(this.font, this.title, this.width / 2, this.layoutY + 10, 0xFFFFFFFF);
+        gfx.drawCenteredString(this.font, this.title, this.width / 2, this.layoutY + 10, Theme.TEXT_PRIMARY);
 
         // Draw Page Number
         // Calculated to sit exactly in the gap between Prev/Next buttons
@@ -181,7 +184,7 @@ public class ProjectSelectionScreen extends Screen {
         String pageStr = (currentPage + 1) + "/" + Math.max(1, totalPages);
 
         // +6 y-offset to center text vertically in the 20px height of the buttons
-        gfx.drawCenteredString(this.font, pageStr, this.width / 2, navY + 6, 0xFFAAAAAA);
+        gfx.drawCenteredString(this.font, pageStr, this.width / 2, navY + 6, Theme.TEXT_SECONDARY);
 
         // Render Widgets manually to ensure they are on this Z-layer
         for (Renderable renderable : this.renderables) {

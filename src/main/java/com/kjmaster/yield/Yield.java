@@ -21,7 +21,7 @@ public class Yield {
     public Yield(IEventBus modEventBus, ModContainer modContainer) {
         // Register our mod's ModConfigSpec so that FML can create and load the config file for us
         modContainer.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
-
+        YieldServiceRegistry.init();
     }
 
 }

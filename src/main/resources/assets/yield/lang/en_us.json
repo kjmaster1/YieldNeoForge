@@ -10,6 +10,7 @@
   "key.categories.yield": "Yield",
   "key.yield.open_dashboard": "Open Dashboard",
   "key.yield.quick_track": "Quick Track Item",
+  "key.yield.toggle_overlay": "Toggle Overlay",
 
   "yield.toast.complete": "Goal Met!",
   "yield.dashboard.title": "Yield Dashboard",

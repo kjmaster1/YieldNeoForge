@@ -1,5 +1,6 @@
 package com.kjmaster.yield.event;
 
+import com.kjmaster.yield.Config;
 import com.kjmaster.yield.Yield;
 import com.kjmaster.yield.client.KeyBindings;
 import com.kjmaster.yield.client.screen.YieldDashboardScreen;
@@ -56,10 +57,18 @@ public class ClientGameEvents {
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
+
         SessionTracker.get().onTick(mc.player);
+
         while (KeyBindings.OPEN_DASHBOARD.consumeClick()) {
             if (mc.screen == null) mc.setScreen(new YieldDashboardScreen());
             else if (mc.screen instanceof YieldDashboardScreen) mc.setScreen(null);
+        }
+
+        while (KeyBindings.TOGGLE_OVERLAY.consumeClick()) {
+            boolean newState = !Config.OVERLAY_ENABLED.get();
+            Config.OVERLAY_ENABLED.set(newState);
+            Config.SPEC.save(); // Save to yield-client.toml
         }
     }
 

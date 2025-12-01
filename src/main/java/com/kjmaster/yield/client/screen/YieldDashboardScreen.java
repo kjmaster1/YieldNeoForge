@@ -256,12 +256,12 @@ public class YieldDashboardScreen extends Screen {
 
         int newProjectY = this.height - 25;
 
-        int xpToggleY = newProjectY - btnHeight - gap;
+        int moveHudY = newProjectY - btnHeight - gap;
 
-        int moveHudY = xpToggleY - btnHeight - gap;
+        int xpToggleY = moveHudY - btnHeight - gap;
 
         int statsAreaHeight = 25;
-        int listBottom = moveHudY - statsAreaHeight - gap;
+        int listBottom = xpToggleY - statsAreaHeight - gap;
 
         this.projectList.updateSizeAndPosition(SIDEBAR_WIDTH, listBottom, 0);
         this.projectList.setPosition(0, 0);
@@ -269,13 +269,15 @@ public class YieldDashboardScreen extends Screen {
         this.newProjectButton.setPosition(5, newProjectY);
         this.newProjectButton.setWidth(SIDEBAR_WIDTH - 10);
 
+        if (this.moveHudButton != null) {
+            this.moveHudButton.setPosition(5, moveHudY);
+            this.moveHudButton.setWidth(SIDEBAR_WIDTH - 10);
+        }
+
         if (this.xpToggleButton != null) {
             this.xpToggleButton.setPosition(5, xpToggleY);
             this.xpToggleButton.setWidth(SIDEBAR_WIDTH - 10);
         }
-
-        this.moveHudButton.setPosition(5, moveHudY);
-        this.moveHudButton.setWidth(SIDEBAR_WIDTH - 10);
 
         int contentLeft = SIDEBAR_WIDTH + PADDING;
         int contentRight = getContentRight() - PADDING;
@@ -296,12 +298,6 @@ public class YieldDashboardScreen extends Screen {
             addGoalX = startX + startW + gap;
             deleteX = addGoalX + addGoalW + gap;
         }
-
-        int sidebarLeft = 5;
-        int bottomY = this.height - 50;
-
-        this.xpToggleButton.setPosition(sidebarLeft, bottomY);
-        this.xpToggleButton.setWidth(SIDEBAR_WIDTH - 10);
 
         this.deleteButton.setPosition(deleteX, topY);
         this.deleteButton.setWidth(deleteW);
@@ -447,7 +443,7 @@ public class YieldDashboardScreen extends Screen {
         if (SessionTracker.get().isRunning() && this.xpToggleButton != null && this.xpToggleButton.visible) {
             if (p != null && p.shouldTrackXp()) {
                 // The button is at (height - 50), so we draw above it
-                int buttonTop = this.moveHudButton.getY();
+                int buttonTop = this.xpToggleButton.getY();
                 int xpStatsY = buttonTop - 22; // 22 pixels above the button
 
                 // Draw Icon & Text
@@ -717,11 +713,6 @@ public class YieldDashboardScreen extends Screen {
             return this.goalAmountInput.charTyped(codePoint, modifiers);
         }
         return super.charTyped(codePoint, modifiers);
-    }
-
-    @Override
-    public boolean isPauseScreen() {
-        return false;
     }
 
     public YieldProject getSelectedProject() {

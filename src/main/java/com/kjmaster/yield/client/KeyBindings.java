@@ -21,4 +21,12 @@ public class KeyBindings {
             GLFW.GLFW_KEY_LEFT_CONTROL, // Default to Ctrl
             "key.categories.yield"
     );
+
+    public static final KeyMapping TOGGLE_OVERLAY = new KeyMapping(
+            "key.yield.toggle_overlay",
+            KeyConflictContext.IN_GAME, // Only works while playing
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_O, // Default to 'O'
+            "key.categories.yield"
+    );
 }

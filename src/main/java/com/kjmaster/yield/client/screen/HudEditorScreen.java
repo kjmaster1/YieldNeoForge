@@ -9,6 +9,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 
 public class HudEditorScreen extends Screen {
@@ -47,8 +48,10 @@ public class HudEditorScreen extends Screen {
     }
 
     @Override
+    public void renderBackground(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {}
+
+    @Override
     public void render(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(gfx, mouseX, mouseY, partialTick);
 
         gfx.fillGradient(0, 0, this.width, this.height, 0x40000000, 0x40000000);
         gfx.drawCenteredString(this.font, "Drag the HUD to move. Press ESC to Cancel.", this.width / 2, 10, 0xFFFFFFFF);

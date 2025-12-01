@@ -1,5 +1,6 @@
 package com.kjmaster.yield.tracker;
 
+import com.kjmaster.yield.client.GoalToast;
 import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
@@ -142,7 +143,7 @@ public class SessionTracker {
 
             // Detect Completion Toast
             if (lastCount != -1 && lastCount < goal.getTargetAmount() && currentCount >= goal.getTargetAmount()) {
-                Minecraft.getInstance().getToasts().addToast(new com.kjmaster.yield.client.GoalToast(goal));
+                Minecraft.getInstance().getToasts().addToast(new GoalToast(goal));
             }
 
             // Calculate Delta

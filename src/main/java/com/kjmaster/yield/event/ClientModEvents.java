@@ -18,6 +18,7 @@ public class ClientModEvents {
     public static void registerKeys(RegisterKeyMappingsEvent event) {
         event.register(KeyBindings.OPEN_DASHBOARD);
         event.register(KeyBindings.QUICK_TRACK);
+        event.register(KeyBindings.TOGGLE_OVERLAY);
     }
 
     @SubscribeEvent

@@ -4,6 +4,7 @@ import com.kjmaster.yield.Config;
 import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
+import com.kjmaster.yield.tracker.GoalTracker;
 import com.kjmaster.yield.tracker.SessionTracker;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -143,22 +144,45 @@ public class YieldOverlay implements LayeredDraw.Layer {
         }
     }
 
+    private static String formatEta(double hours) {
+        if (Double.isInfinite(hours) || hours <= 0) return "-";
+        int totalMinutes = (int) (hours * 60);
+        if (totalMinutes < 60) {
+            return totalMinutes + "m";
+        }
+        return String.format("%dh %dm", totalMinutes / 60, totalMinutes % 60);
+    }
+
     private static void renderGoalRow(GuiGraphics gfx, Font font, ProjectGoal goal, int x, int y, int totalWidth, boolean isPaused) {
         ItemStack icon = goal.getRenderStack();
         gfx.renderItem(icon, x, y);
 
-        String progress = String.format("%d/%d", goal.getCurrentCachedAmount(), goal.getTargetAmount());
+        GoalTracker tracker = SessionTracker.get().getTracker(goal);
+
+        String progress = String.format("%d/%d", tracker.getCurrentCount(), goal.getTargetAmount());
 
         int textColor = isPaused ? TEXT_COLOR_PAUSED : TEXT_COLOR;
         gfx.drawString(font, Component.literal(progress), x + ICON_SIZE + 4, y + 4, textColor, true);
 
-        int rate = (int) goal.getItemsPerHour();
-        int rateColor = isPaused ? RATE_COLOR_PAUSED : RATE_COLOR;
+        double rate = tracker.getItemsPerHour();
 
         if (rate > 0) {
-            String rateStr = rate + "/h";
-            int rateWidth = font.width(rateStr);
-            gfx.drawString(font, Component.literal(rateStr), (x + totalWidth - (PADDING * 2)) - rateWidth, y + 4, rateColor, true);
+            // 1. Calculate ETA
+            int remaining = Math.max(0, goal.getTargetAmount() - tracker.getCurrentCount());
+            String rightText;
+
+            if (remaining > 0) {
+                String eta = formatEta(remaining / rate);
+                // Format: "1200/h (45m)"
+                rightText = String.format("%.0f/h (%s)", rate, eta);
+            } else {
+                rightText = String.format("%.0f/h", rate);
+            }
+
+            int rightTextWidth = font.width(rightText);
+            int rateColor = isPaused ? RATE_COLOR_PAUSED : RATE_COLOR;
+
+            gfx.drawString(font, Component.literal(rightText), (x + totalWidth - (PADDING * 2)) - rightTextWidth, y + 4, rateColor, true);
         }
     }
 

@@ -98,6 +98,9 @@ repositories {
         name = "ModMaven"
         url = "https://modmaven.dev"
     }
+    maven {
+        url = "https://maven.theillusivec4.top/"
+    }
 }
 
 dependencies {
@@ -113,6 +116,9 @@ dependencies {
     compileOnly("mezz.jei:jei-1.21-neoforge-api:${jei_version}")
     // at runtime, use the full JEI jar for NeoForge
     runtimeOnly("mezz.jei:jei-1.21-neoforge:${jei_version}")
+
+    compileOnly("top.theillusivec4.curios:curios-neoforge:${curios_version}")
+    runtimeOnly("top.theillusivec4.curios:curios-neoforge:${curios_version}")
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
@@ -132,6 +138,7 @@ tasks.withType(ProcessResources).configureEach {
             mod_authors            : mod_authors,
             mod_description        : mod_description,
             jei_version            : jei_version,
+            curios_version         : curios_version
     ]
     inputs.properties replaceProperties
 

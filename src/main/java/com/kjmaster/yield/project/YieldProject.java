@@ -40,6 +40,7 @@ public class YieldProject {
     public void addGoal(ProjectGoal goal) {
         // Merge logic: if item exists, just add to target amount
         for (ProjectGoal existing : goals) {
+            // Use 1.21 compatible check (matches Item Type)
             if (existing.getItem() == goal.getItem()) {
                 existing.setTargetAmount(existing.getTargetAmount() + goal.getTargetAmount());
                 return;

@@ -8,6 +8,7 @@ public class RateCalculator {
 
     private final Deque<GainEntry> history = new ArrayDeque<>();
     private final long windowMillis;
+    private int currentSum = 0; // Optimization: Running sum
 
     public RateCalculator(int windowSeconds) {
         this.windowMillis = windowSeconds * 1000L;
@@ -15,38 +16,35 @@ public class RateCalculator {
 
     public void addGain(int amount) {
         if (amount <= 0) return;
-        history.addLast(new GainEntry(System.currentTimeMillis(), amount));
+        long now = System.currentTimeMillis();
+        history.addLast(new GainEntry(now, amount));
+        currentSum += amount; // O(1) Add
+        prune(now);
+    }
+
+    private void prune(long now) {
+        long cutoff = now - windowMillis;
+        // O(k) where k is the number of expired entries (usually 0 or 1 per tick)
+        while (!history.isEmpty() && history.peekFirst().timestamp < cutoff) {
+            currentSum -= history.removeFirst().amount;
+        }
     }
 
     public double getItemsPerHour() {
         long now = System.currentTimeMillis();
-        long cutoff = now - windowMillis;
-
-        // 1. Prune old entries (Standard Rolling Window)
-        while (!history.isEmpty() && history.peekFirst().timestamp < cutoff) {
-            history.removeFirst();
-        }
+        prune(now); // Ensure data is strictly within the window
 
         if (history.isEmpty()) return 0.0;
 
-        // 2. Sum gains
-        int totalGains = history.stream().mapToInt(GainEntry::amount).sum();
-
-        // 3. Calculate "Effective Window"
-        // Instead of always dividing by 60s, we divide by how much time
-        // has actually passed since the oldest relevant data point.
-        // This makes the rate "Instant" at the start and "Smoothed" after 60s.
+        // Calculate actual time span for accurate "Instant Rate" at start of session
         long oldestTime = history.peekFirst().timestamp;
-        long timeSinceFirstGain = now - oldestTime;
+        double effectiveSeconds = Math.max(1000, now - oldestTime) / 1000.0;
 
-        // Clamp minimum divisor to 1 second (1000ms) to prevent divide-by-zero or infinite spikes
-        double effectiveSeconds = Math.max(1000, timeSinceFirstGain) / 1000.0;
-
-        // 4. Calculate Hourly Rate
-        return (totalGains / effectiveSeconds) * 3600.0;
+        return (currentSum / effectiveSeconds) * 3600.0;
     }
 
     public void clear() {
         history.clear();
+        currentSum = 0;
     }
 }

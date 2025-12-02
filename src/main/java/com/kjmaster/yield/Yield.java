@@ -72,7 +72,7 @@ public class Yield {
         event.registerAbove(
                 VanillaGuiLayers.EFFECTS,
                 ResourceLocation.fromNamespaceAndPath(Yield.MODID, "yield_hud"),
-                new YieldOverlay(services)
+                new YieldOverlay(services.projectProvider(), services.sessionStatus())
         );
     }
 

@@ -27,7 +27,8 @@ public class GoalDomainService {
                         existing.targetAmount() + goal.targetAmount(),
                         existing.strict(),
                         existing.components(),
-                        existing.targetTag()
+                        existing.targetTag(),
+                        existing.ignoredComponents()
                 );
                 newGoals.set(i, mergedGoal);
                 merged = true;
@@ -59,8 +60,17 @@ public class GoalDomainService {
     }
 
     private boolean isFuzzyMatch(ProjectGoal existing, ProjectGoal newGoal) {
-        return existing.item() == newGoal.item()
+        boolean basicMatch = existing.item() == newGoal.item()
                 && existing.strict() == newGoal.strict()
                 && existing.targetTag().equals(newGoal.targetTag());
+
+        if (!basicMatch) return false;
+
+        // Fix: Check components if strict mode is active
+        if (existing.strict()) {
+            return existing.components().equals(newGoal.components());
+        }
+
+        return true;
     }
 }

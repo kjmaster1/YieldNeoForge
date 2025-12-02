@@ -1,7 +1,8 @@
 package com.kjmaster.yield.client;
 
 import com.kjmaster.yield.Config;
-import com.kjmaster.yield.YieldServices;
+import com.kjmaster.yield.api.IProjectProvider;
+import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.tracker.GoalTracker;
@@ -20,10 +21,12 @@ import java.util.Optional;
 
 public class YieldOverlay implements LayeredDraw.Layer {
 
-    private final YieldServices services;
+    private final IProjectProvider projectProvider;
+    private final ISessionStatus sessionStatus;
 
-    public YieldOverlay(YieldServices services) {
-        this.services = services;
+    public YieldOverlay(IProjectProvider projectProvider, ISessionStatus sessionStatus) {
+        this.projectProvider = projectProvider;
+        this.sessionStatus = sessionStatus;
     }
 
     @Override
@@ -32,10 +35,10 @@ public class YieldOverlay implements LayeredDraw.Layer {
         if (mc.options.hideGui || mc.getDebugOverlay().showDebugScreen()) return;
         if (!Config.OVERLAY_ENABLED.get()) return;
 
-        Optional<YieldProject> projectOpt = services.projectProvider().getActiveProject();
+        Optional<YieldProject> projectOpt = projectProvider.getActiveProject();
         if (projectOpt.isEmpty()) return;
         YieldProject project = projectOpt.get();
-        boolean isPaused = !services.sessionStatus().isRunning();
+        boolean isPaused = !sessionStatus.isRunning();
 
         int width = 150;
         int height = calculateHeight(project);
@@ -50,7 +53,7 @@ public class YieldOverlay implements LayeredDraw.Layer {
         x = Mth.clamp(x, 0, screenW - width);
         y = Mth.clamp(y, 0, screenH - height);
 
-        renderHud(gfx, mc.font, project, x, y, width, height, isPaused, services);
+        renderHud(gfx, mc.font, project, x, y, width, height, isPaused, projectProvider, sessionStatus);
     }
 
     public static int calculateHeight(YieldProject project) {
@@ -59,7 +62,7 @@ public class YieldOverlay implements LayeredDraw.Layer {
                 + (project.trackXp() ? Theme.OVERLAY_LINE_HEIGHT : 0);
     }
 
-    public static void renderHud(GuiGraphics gfx, Font font, YieldProject project, int x, int y, int width, int height, boolean isPaused, YieldServices services) {
+    public static void renderHud(GuiGraphics gfx, Font font, YieldProject project, int x, int y, int width, int height, boolean isPaused, IProjectProvider projectProvider, ISessionStatus sessionStatus) {
         int bgColor = Config.OVERLAY_COLOR.get();
         gfx.fill(x, y, x + width, y + height, bgColor);
 
@@ -67,15 +70,15 @@ public class YieldOverlay implements LayeredDraw.Layer {
         int currentY = y + Theme.PADDING;
 
         // Save Failure Indicator
-        if (services.projectProvider().hasSaveFailed()) {
+        if (projectProvider.hasSaveFailed()) {
             gfx.drawString(font, "!", x + width - 8, currentY + 4, 0xFFFF5555, true);
         }
 
-        long durationSecs = services.sessionStatus().getSessionDuration() / 1000;
+        long durationSecs = sessionStatus.getSessionDuration() / 1000;
         String timeStr = String.format("%02d:%02d", durationSecs / 60, durationSecs % 60);
         int timeWidth = font.width(timeStr);
         // Adjust time position if warning is present
-        int rightMargin = services.projectProvider().hasSaveFailed() ? Theme.PADDING + 10 : Theme.PADDING;
+        int rightMargin = projectProvider.hasSaveFailed() ? Theme.PADDING + 10 : Theme.PADDING;
 
         gfx.drawString(font, Component.literal(timeStr), x + width - rightMargin - timeWidth, currentY + 4, isPaused ? Theme.OVERLAY_TEXT_PAUSED : Theme.OVERLAY_DASH, true);
 
@@ -100,24 +103,24 @@ public class YieldOverlay implements LayeredDraw.Layer {
         currentY += Theme.OVERLAY_LINE_HEIGHT;
 
         if (project.trackXp()) {
-            renderXpRow(gfx, font, x + Theme.PADDING, currentY, width, services);
+            renderXpRow(gfx, font, x + Theme.PADDING, currentY, width, sessionStatus);
             currentY += Theme.OVERLAY_LINE_HEIGHT;
         }
 
         int goalCount = Math.min(project.goals().size(), 5);
         for (int i = 0; i < goalCount; i++) {
             ProjectGoal goal = project.goals().get(i);
-            renderGoalRow(gfx, font, goal, x + Theme.PADDING, currentY, width, isPaused, services);
+            renderGoalRow(gfx, font, goal, x + Theme.PADDING, currentY, width, isPaused, sessionStatus);
             currentY += Theme.OVERLAY_LINE_HEIGHT;
         }
     }
 
-    private static void renderXpRow(GuiGraphics gfx, Font font, int x, int y, int totalWidth, YieldServices services) {
+    private static void renderXpRow(GuiGraphics gfx, Font font, int x, int y, int totalWidth, ISessionStatus sessionStatus) {
         ItemStack icon = new ItemStack(Items.EXPERIENCE_BOTTLE);
         gfx.renderItem(icon, x, y);
         gfx.drawString(font, Component.literal("Experience"), x + Theme.OVERLAY_ICON_SIZE + 4, y + 4, Theme.OVERLAY_XP_LABEL, true);
 
-        int xpRate = (int) services.sessionStatus().getXpPerHour();
+        int xpRate = (int) sessionStatus.getXpPerHour();
         if (xpRate > 0) {
             String rateStr = xpRate + " XP/h";
             int rateWidth = font.width(rateStr);
@@ -127,11 +130,11 @@ public class YieldOverlay implements LayeredDraw.Layer {
         }
     }
 
-    private static void renderGoalRow(GuiGraphics gfx, Font font, ProjectGoal goal, int x, int y, int totalWidth, boolean isPaused, YieldServices services) {
+    private static void renderGoalRow(GuiGraphics gfx, Font font, ProjectGoal goal, int x, int y, int totalWidth, boolean isPaused, ISessionStatus sessionStatus) {
         ItemStack icon = goal.getRenderStack();
         gfx.renderItem(icon, x, y);
 
-        GoalTracker tracker = services.sessionStatus().getTracker(goal);
+        GoalTracker tracker = sessionStatus.getTracker(goal);
         String progress = String.format("%d/%d", tracker.getCurrentCount(), goal.targetAmount());
         int textColor = isPaused ? Theme.TEXT_SECONDARY : Theme.TEXT_PRIMARY;
         gfx.drawString(font, Component.literal(progress), x + Theme.OVERLAY_ICON_SIZE + 4, y + 4, textColor, true);

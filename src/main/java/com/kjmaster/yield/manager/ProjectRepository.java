@@ -63,17 +63,24 @@ public class ProjectRepository {
     }
 
     /**
-     * Saves a specific project to its own file.
-     * Uses the cached storage directory.
+     * Saves a specific project to its own file using the current storage directory.
      */
     public boolean saveProject(YieldProject project) {
-        File dir = getStorageDirectory(); // Uses cache
-        if (!dir.exists() && !dir.mkdirs()) {
-            Yield.LOGGER.error("Could not create project directory: {}", dir.getAbsolutePath());
+        return saveProject(project, getStorageDirectory());
+    }
+
+    /**
+     * Saves a specific project to the specified directory.
+     * This ensures asynchronous tasks can write to the correct folder even if the
+     * active world (and thus the cached directory) changes before execution.
+     */
+    public boolean saveProject(YieldProject project, File directory) {
+        if (!directory.exists() && !directory.mkdirs()) {
+            Yield.LOGGER.error("Could not create project directory: {}", directory.getAbsolutePath());
             return false;
         }
 
-        File file = new File(dir, project.id().toString() + ".json");
+        File file = new File(directory, project.id().toString() + ".json");
 
         return YieldProject.CODEC.encodeStart(JsonOps.INSTANCE, project)
                 .resultOrPartial(err -> Yield.LOGGER.error("Serialization error for project {}: {}", project.name(), err))

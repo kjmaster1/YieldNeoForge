@@ -7,6 +7,7 @@ import com.kjmaster.yield.event.internal.YieldEvents;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.util.Debouncer;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -106,8 +107,13 @@ public class ProjectManager implements IProjectProvider, IProjectController {
     }
 
     private void scheduleSave(YieldProject project) {
+        // Capture the current storage directory context immediately.
+        // This ensures that if the player switches worlds before the debounce timer fires,
+        // the save will still be written to the original world's folder.
+        File contextDir = repository.getStorageDirectory();
+
         debouncer.debounce(() -> {
-            boolean success = repository.saveProject(project);
+            boolean success = repository.saveProject(project, contextDir);
             this.saveFailed = !success;
         }, 2, TimeUnit.SECONDS);
     }

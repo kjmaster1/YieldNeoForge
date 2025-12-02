@@ -1,7 +1,8 @@
 package com.kjmaster.yield.client.screen;
 
 import com.kjmaster.yield.Config;
-import com.kjmaster.yield.YieldServices;
+import com.kjmaster.yield.api.IProjectProvider;
+import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.client.YieldOverlay;
 import com.kjmaster.yield.project.YieldProject;
@@ -16,7 +17,8 @@ import org.lwjgl.glfw.GLFW;
 public class HudEditorScreen extends Screen {
 
     private final Screen parent;
-    private final YieldServices services;
+    private final IProjectProvider projectProvider;
+    private final ISessionStatus sessionStatus;
 
     private double currentNormX;
     private double currentNormY;
@@ -26,10 +28,11 @@ public class HudEditorScreen extends Screen {
     private int dragOffsetY;
     private final YieldProject dummyProject;
 
-    public HudEditorScreen(Screen parent, YieldServices services) {
+    public HudEditorScreen(Screen parent, IProjectProvider projectProvider, ISessionStatus sessionStatus) {
         super(Component.literal("Yield HUD Editor"));
         this.parent = parent;
-        this.services = services;
+        this.projectProvider = projectProvider;
+        this.sessionStatus = sessionStatus;
         this.currentNormX = Config.OVERLAY_X.get();
         this.currentNormY = Config.OVERLAY_Y.get();
         this.dummyProject = new YieldProject("Preview Project").withTrackXp(true);
@@ -43,14 +46,15 @@ public class HudEditorScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {}
+    public void renderBackground(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    }
 
     @Override
     public void render(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
         gfx.fillGradient(0, 0, this.width, this.height, 0x40000000, 0x40000000);
         gfx.drawCenteredString(this.font, "Drag the HUD to move. Press ESC to Cancel.", this.width / 2, 10, Theme.TEXT_PRIMARY);
 
-        YieldProject displayProject = services.projectProvider().getActiveProject().orElse(dummyProject);
+        YieldProject displayProject = projectProvider.getActiveProject().orElse(dummyProject);
 
         int w = 150;
         int h = YieldOverlay.calculateHeight(displayProject);
@@ -60,15 +64,15 @@ public class HudEditorScreen extends Screen {
         x = Mth.clamp(x, 0, this.width - w);
         y = Mth.clamp(y, 0, this.height - h);
 
-        boolean isPaused = !services.sessionStatus().isRunning();
-        YieldOverlay.renderHud(gfx, this.font, displayProject, x, y, w, h, isPaused, services);
+        boolean isPaused = !sessionStatus.isRunning();
+        YieldOverlay.renderHud(gfx, this.font, displayProject, x, y, w, h, isPaused, projectProvider, sessionStatus);
         super.render(gfx, mouseX, mouseY, partialTick);
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
-            YieldProject displayProject = services.projectProvider().getActiveProject().orElse(dummyProject);
+            YieldProject displayProject = projectProvider.getActiveProject().orElse(dummyProject);
             int w = 150;
             int h = YieldOverlay.calculateHeight(displayProject);
             int x = Mth.clamp((int) (this.width * currentNormX), 0, this.width - w);
@@ -87,7 +91,7 @@ public class HudEditorScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (isDragging) {
-            YieldProject displayProject = services.projectProvider().getActiveProject().orElse(dummyProject);
+            YieldProject displayProject = projectProvider.getActiveProject().orElse(dummyProject);
             int w = 150;
             int h = YieldOverlay.calculateHeight(displayProject);
             int newX = (int) mouseX - dragOffsetX;

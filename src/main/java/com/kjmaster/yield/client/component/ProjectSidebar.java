@@ -4,6 +4,7 @@ import com.kjmaster.yield.api.IProjectController;
 import com.kjmaster.yield.api.IProjectProvider;
 import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.client.Theme;
+import com.kjmaster.yield.client.screen.HudEditorScreen;
 import com.kjmaster.yield.event.internal.YieldEventBus;
 import com.kjmaster.yield.event.internal.YieldEvents;
 import com.kjmaster.yield.project.YieldProject;
@@ -96,7 +97,9 @@ public class ProjectSidebar extends AbstractWidget {
         }).width(Theme.SIDEBAR_WIDTH - 10).build();
 
         this.moveHudButton = Button.builder(Component.translatable("yield.label.move_hud"), btn -> {
-            // Placeholder
+            if (this.minecraft.screen != null) {
+                this.minecraft.setScreen(new HudEditorScreen(this.minecraft.screen, projectProvider, sessionStatus));
+            }
         }).width(Theme.SIDEBAR_WIDTH - 10).build();
 
         this.newProjectButton = Button.builder(Component.translatable("yield.label.new_project"), btn -> {

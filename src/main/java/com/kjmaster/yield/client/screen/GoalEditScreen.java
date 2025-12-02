@@ -13,8 +13,12 @@ import net.minecraft.client.gui.layouts.LinearLayout;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class GoalEditScreen extends Screen {
 
@@ -25,7 +29,11 @@ public class GoalEditScreen extends Screen {
 
     private EditBox amountInput;
     private Button strictButton;
+    private Button configComponentsButton;
+
     private boolean strictState;
+    private List<ResourceLocation> ignoredComponents;
+
     private LinearLayout layout;
 
     public GoalEditScreen(YieldDashboardScreen parent, ProjectGoal goal, YieldProject projectContext, YieldServices services) {
@@ -35,6 +43,7 @@ public class GoalEditScreen extends Screen {
         this.projectContext = projectContext;
         this.services = services;
         this.strictState = goal.strict();
+        this.ignoredComponents = new ArrayList<>(goal.ignoredComponents());
     }
 
     @Override
@@ -49,12 +58,27 @@ public class GoalEditScreen extends Screen {
         this.amountInput.setFilter(s -> s.matches("\\d*"));
         this.layout.addChild(this.amountInput);
 
+        // Strict Mode Row
+        LinearLayout strictRow = LinearLayout.horizontal().spacing(4);
+
         this.strictButton = Button.builder(getStrictMessage(), btn -> {
             this.strictState = !this.strictState;
             btn.setMessage(getStrictMessage());
-        }).width(120).build();
-        this.layout.addChild(this.strictButton);
+            this.configComponentsButton.active = this.strictState;
+        }).width(100).build();
 
+        this.configComponentsButton = Button.builder(Component.translatable("yield.label.components_btn"), btn -> {
+            this.minecraft.setScreen(new ComponentSelectionScreen(this, goal.getRenderStack(), ignoredComponents, newList -> {
+                this.ignoredComponents = newList;
+            }));
+        }).width(90).build();
+        this.configComponentsButton.active = this.strictState;
+
+        strictRow.addChild(this.strictButton);
+        strictRow.addChild(this.configComponentsButton);
+        this.layout.addChild(strictRow);
+
+        // Action Row
         LinearLayout buttonRow = LinearLayout.horizontal().spacing(10);
         buttonRow.addChild(Button.builder(Component.translatable("yield.label.save"), btn -> save()).width(55).build());
         buttonRow.addChild(Button.builder(CommonComponents.GUI_CANCEL, btn -> onClose()).width(55).build());
@@ -104,7 +128,7 @@ public class GoalEditScreen extends Screen {
     private Component getStrictMessage() {
         String status = strictState ? "ON" : "OFF";
         int color = strictState ? 0xFF55FF55 : Theme.TEXT_SECONDARY;
-        return Component.literal("Strict Mode: " + status).withColor(color);
+        return Component.literal("Strict: " + status).withColor(color);
     }
 
     private void save() {
@@ -117,11 +141,13 @@ public class GoalEditScreen extends Screen {
                     targetAmount,
                     this.strictState,
                     this.goal.components(),
-                    this.goal.targetTag()
+                    this.goal.targetTag(),
+                    this.ignoredComponents
             );
 
             YieldProject updatedProject = services.goalDomainService().updateGoal(this.projectContext, updatedGoal);
 
+            // UI Updates via Events usually, but explicit refresh ensures snappy UX for the modal parent
             this.parent.updateUiState(updatedProject);
             this.services.projectController().updateProject(updatedProject);
         } catch (NumberFormatException ignored) {}

@@ -2,10 +2,6 @@
   "yield.configuration.title": "Yield Configs",
   "yield.configuration.section.yield.common.toml": "Yield Configs",
   "yield.configuration.section.yield.common.toml.title": "Yield Configs",
-  "yield.configuration.items": "Item List",
-  "yield.configuration.logDirtBlock": "Log Dirt Block",
-  "yield.configuration.magicNumberIntroduction": "Magic Number Text",
-  "yield.configuration.magicNumber": "Magic Number",
 
   "key.categories.yield": "Yield",
   "key.yield.open_dashboard": "Open Dashboard",
@@ -36,5 +32,10 @@
   "yield.label.search_items": "Search Items...",
   "yield.label.move_hud": "Move Hud",
   "yield.label.goals_empty": "Drag items from JEI or click '+ Goal' to begin.",
-  "yield.title.select_project": "Select Project"
+  "yield.title.select_project": "Select Project",
+
+  "yield.title.component_selection": "Configure Strict Mode",
+  "yield.label.components_btn": "Config...",
+  "yield.label.ignored": "IGNORED",
+  "yield.label.tracked": "TRACKED"
 }

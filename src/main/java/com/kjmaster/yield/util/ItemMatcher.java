@@ -4,56 +4,64 @@ import com.kjmaster.yield.project.ProjectGoal;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.component.TypedDataComponent;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class ItemMatcher {
     /**
      * Checks if the source stack matches the target goal.
-     * Supports Smart Strict (Components ignoring Damage), Tag, and Fuzzy (Item Type) matching.
+     * Supports Tag, Strict (Masked), and Fuzzy matching.
      */
     public static boolean matches(ItemStack source, ProjectGoal goal) {
         if (source.isEmpty()) return false;
 
-        // 1. Tag Mode: Checks if item belongs to the configured Tag
-        // Check this first as it implies a different matching logic
+        // 1. Tag Mode
         if (goal.targetTag().isPresent()) {
             return source.is(goal.targetTag().get());
         }
 
-        // 2. Base Item Check (Identity)
-        // Using == is safe for singleton Items and faster than implicit equals()
+        // 2. Base Item Check
         if (source.getItem() != goal.item()) {
             return false;
         }
 
-        // 3. Strict Mode: Checks Data Components
+        // 3. Strict Mode (Masked)
         if (goal.strict()) {
-            return areComponentsEqualIgnoringDamage(source, goal.getRenderStack());
+            return areComponentsEqualMasked(source, goal.getRenderStack(), goal.ignoredComponents());
         }
 
-        // 4. Fuzzy Mode: Item Type matched above
+        // 4. Fuzzy Mode
         return true;
     }
 
-    /**
-     * Compares components of two stacks but ignores the DAMAGE (Durability) component.
-     */
-    private static boolean areComponentsEqualIgnoringDamage(ItemStack a, ItemStack b) {
-        // Fast path: Exact reference or full value equality
-        if (ItemStack.isSameItemSameComponents(a, b)) return true;
+    private static boolean areComponentsEqualMasked(ItemStack a, ItemStack b, List<ResourceLocation> ignoredIds) {
+        // Fast path: Exact reference or full value equality (if no mask)
+        if (ignoredIds.isEmpty() && ItemStack.isSameItemSameComponents(a, b)) return true;
 
-        // Detailed component scan
-        return checkContains(a, b) && checkContains(b, a);
+        // Resolve ResourceLocations to ComponentTypes for faster lookup
+        Set<DataComponentType<?>> ignoredTypes = ignoredIds.stream()
+                .map(BuiltInRegistries.DATA_COMPONENT_TYPE::get)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // Always ignore Damage (Durability) in loose strict mode unless explicitly tracked?
+        // Standard practice is to ignore damage for tools/armor matching.
+        ignoredTypes.add(DataComponents.DAMAGE);
+
+        return checkContains(a, b, ignoredTypes) && checkContains(b, a, ignoredTypes);
     }
 
-    private static boolean checkContains(ItemStack stackA, ItemStack stackB) {
+    private static boolean checkContains(ItemStack stackA, ItemStack stackB, Set<DataComponentType<?>> ignored) {
         for (TypedDataComponent<?> component : stackA.getComponents()) {
             DataComponentType<?> type = component.type();
 
-            // IGNORE Durability/Damage
-            if (type == DataComponents.DAMAGE) continue;
+            if (ignored.contains(type)) continue;
 
             // Check if B has this component
             if (!stackB.has(type)) return false;

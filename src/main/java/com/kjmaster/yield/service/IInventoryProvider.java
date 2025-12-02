@@ -12,9 +12,8 @@ public interface IInventoryProvider {
      * Scans the inventory source and updates the trackers using ScannerHelper.
      *
      * @param player           The player entity.
-     * @param itemTrackers     Map of item-specific trackers.
-     * @param tagTrackers      List of tag-based trackers.
+     * @param itemTrackers     Map of item-specific trackers (Inverted Index).
      * @param targetItemFilter Optional item to filter the scan (optimization).
      */
-    void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, List<GoalTracker> tagTrackers, Item targetItemFilter);
+    void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, Item targetItemFilter);
 }

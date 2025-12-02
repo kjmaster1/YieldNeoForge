@@ -13,24 +13,24 @@ import java.util.Map;
 public class VanillaInventoryProvider implements IInventoryProvider {
 
     @Override
-    public void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, List<GoalTracker> tagTrackers, Item targetItemFilter) {
-        // 1. Scan Capability Inventory (e.g. Modded Containers attached to player)
+    public void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, Item targetItemFilter) {
+        // 1. Scan Capability Inventory
         IItemHandler handler = player.getCapability(Capabilities.ItemHandler.ENTITY, null);
 
         if (handler != null) {
             for (int i = 0; i < handler.getSlots(); i++) {
-                ScannerHelper.checkAndIncrement(handler.getStackInSlot(i), itemTrackers, tagTrackers, targetItemFilter);
+                ScannerHelper.checkAndIncrement(handler.getStackInSlot(i), itemTrackers, targetItemFilter);
             }
         } else {
             // 2. Vanilla Fallback
             for (ItemStack stack : player.getInventory().items) {
-                ScannerHelper.checkAndIncrement(stack, itemTrackers, tagTrackers, targetItemFilter);
+                ScannerHelper.checkAndIncrement(stack, itemTrackers, targetItemFilter);
             }
             for (ItemStack stack : player.getInventory().armor) {
-                ScannerHelper.checkAndIncrement(stack, itemTrackers, tagTrackers, targetItemFilter);
+                ScannerHelper.checkAndIncrement(stack, itemTrackers, targetItemFilter);
             }
             for (ItemStack stack : player.getInventory().offhand) {
-                ScannerHelper.checkAndIncrement(stack, itemTrackers, tagTrackers, targetItemFilter);
+                ScannerHelper.checkAndIncrement(stack, itemTrackers, targetItemFilter);
             }
         }
     }

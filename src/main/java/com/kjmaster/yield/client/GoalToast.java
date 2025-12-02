@@ -37,7 +37,7 @@ public class GoalToast implements Toast {
         gfx.drawString(toastComponent.getMinecraft().font, Component.translatable("yield.toast.complete"), 30, 7, Theme.TEXT_YELLOW, false);
 
         // Description: "64/64 Diamonds" -> Vanilla White (0xFFFFFFFF)
-        String desc = goal.getTargetAmount() + " " + goal.getItem().getName(new ItemStack(goal.getItem())).getString();
+        String desc = goal.targetAmount() + " " + goal.item().getName(new ItemStack(goal.item())).getString();
 
         // Handle long item names by truncating or letting the font renderer handle it (vanilla usually splits, but truncating is safer for simple implementation)
         int maxWidth = this.width() - 30 - 5;

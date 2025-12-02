@@ -16,7 +16,7 @@ import java.util.Map;
 public class CuriosInventoryProvider implements IInventoryProvider {
 
     @Override
-    public void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, List<GoalTracker> tagTrackers, Item targetItemFilter) {
+    public void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, Item targetItemFilter) {
         var curiosInvOpt = CuriosApi.getCuriosInventory(player);
         if (curiosInvOpt.isEmpty()) return;
 
@@ -26,15 +26,15 @@ public class CuriosInventoryProvider implements IInventoryProvider {
             if (stack.isEmpty()) continue;
 
             // 1. Check the Curio itself
-            ScannerHelper.checkAndIncrement(stack, itemTrackers, tagTrackers, targetItemFilter);
+            ScannerHelper.checkAndIncrement(stack, itemTrackers, targetItemFilter);
 
-            // 2. Check INSIDE the Curio (e.g. Backpacks/Satchels equipped in Curios slots)
+            // 2. Check INSIDE the Curio (e.g. Backpacks/Satchels)
             IItemHandler internalCap = stack.getCapability(Capabilities.ItemHandler.ITEM, null);
             if (internalCap != null) {
                 for (int j = 0; j < internalCap.getSlots(); j++) {
                     ItemStack internalStack = internalCap.getStackInSlot(j);
                     if (!internalStack.isEmpty()) {
-                        ScannerHelper.checkAndIncrement(internalStack, itemTrackers, tagTrackers, targetItemFilter);
+                        ScannerHelper.checkAndIncrement(internalStack, itemTrackers, targetItemFilter);
                     }
                 }
             }

@@ -4,76 +4,82 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-public class YieldProject {
-
-    // Helper codec for UUIDs as strings
-    private static final Codec<UUID> UUID_CODEC = Codec.STRING.xmap(UUID::fromString, UUID::toString);
-
+public record YieldProject(
+        String name,
+        UUID id,
+        List<ProjectGoal> goals,
+        boolean trackXp
+) {
     public static final Codec<YieldProject> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-            Codec.STRING.fieldOf("name").forGetter(YieldProject::getName),
-            UUID_CODEC.fieldOf("id").forGetter(YieldProject::getId),
-            ProjectGoal.CODEC.listOf().fieldOf("goals").forGetter(YieldProject::getGoals),
-            Codec.BOOL.optionalFieldOf("track_xp", false).forGetter(YieldProject::shouldTrackXp)
+            Codec.STRING.fieldOf("name").forGetter(YieldProject::name),
+            Codec.STRING.xmap(UUID::fromString, UUID::toString).fieldOf("id").forGetter(YieldProject::id),
+            ProjectGoal.CODEC.listOf().fieldOf("goals").forGetter(YieldProject::goals),
+            Codec.BOOL.optionalFieldOf("track_xp", false).forGetter(YieldProject::trackXp)
     ).apply(instance, YieldProject::new));
 
-    private String name;
-    private final UUID id;
-    private final List<ProjectGoal> goals;
-    private boolean trackXp;
-
-    // Constructor for deserialization
-    public YieldProject(String name, UUID id, List<ProjectGoal> goals, boolean trackXp) {
-        this.name = name;
-        this.id = id;
-        this.goals = new ArrayList<>(goals); // Ensure mutable list
-        this.trackXp = trackXp;
-    }
-
-    // Constructor for new projects
+    // New Project Constructor
     public YieldProject(String name) {
-        this(name, UUID.randomUUID(), new ArrayList<>(), false);
+        this(name, UUID.randomUUID(), Collections.emptyList(), false);
     }
 
-    public void addGoal(ProjectGoal goal) {
-        // Merge logic: if item exists, just add to target amount
-        for (ProjectGoal existing : goals) {
-            // Use 1.21 compatible check (matches Item Type)
-            if (existing.getItem() == goal.getItem()) {
-                existing.setTargetAmount(existing.getTargetAmount() + goal.getTargetAmount());
-                return;
+    // --- Immutable Modifiers ---
+
+    public YieldProject withName(String newName) {
+        return new YieldProject(newName, id, goals, trackXp);
+    }
+
+    public YieldProject withTrackXp(boolean newTrackXp) {
+        return new YieldProject(name, id, goals, newTrackXp);
+    }
+
+    public YieldProject addGoal(ProjectGoal goal) {
+        List<ProjectGoal> newGoals = new ArrayList<>(goals);
+
+        // Merge Logic: If item matches, replace it with updated amount
+        // Note: We use ID matching for updates, or fuzzy matching for new stacks
+        boolean merged = false;
+        for (int i = 0; i < newGoals.size(); i++) {
+            ProjectGoal existing = newGoals.get(i);
+            // Simple fuzzy merge logic for new additions
+            if (existing.item() == goal.item() && existing.strict() == goal.strict() && existing.targetTag().equals(goal.targetTag())) {
+                ProjectGoal mergedGoal = new ProjectGoal(
+                        existing.id(), // Keep original ID to preserve tracking!
+                        existing.item(),
+                        existing.targetAmount() + goal.targetAmount(),
+                        existing.strict(),
+                        existing.components(),
+                        existing.targetTag()
+                );
+                newGoals.set(i, mergedGoal);
+                merged = true;
+                break;
             }
         }
-        this.goals.add(goal);
+
+        if (!merged) {
+            newGoals.add(goal);
+        }
+        return new YieldProject(name, id, Collections.unmodifiableList(newGoals), trackXp);
     }
 
-    public void removeGoal(ProjectGoal goal) {
-        this.goals.remove(goal);
+    public YieldProject removeGoal(ProjectGoal goal) {
+        List<ProjectGoal> newGoals = new ArrayList<>(goals);
+        newGoals.removeIf(g -> g.id().equals(goal.id()));
+        return new YieldProject(name, id, Collections.unmodifiableList(newGoals), trackXp);
     }
 
-    public List<ProjectGoal> getGoals() {
-        return goals;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public UUID getId() {
-        return id;
-    }
-
-    public boolean shouldTrackXp() {
-        return trackXp;
-    }
-
-    public void setTrackXp(boolean trackXp) {
-        this.trackXp = trackXp;
+    public YieldProject updateGoal(ProjectGoal newGoalData) {
+        List<ProjectGoal> newGoals = new ArrayList<>(goals);
+        for (int i = 0; i < newGoals.size(); i++) {
+            if (newGoals.get(i).id().equals(newGoalData.id())) {
+                newGoals.set(i, newGoalData);
+                break;
+            }
+        }
+        return new YieldProject(name, id, Collections.unmodifiableList(newGoals), trackXp);
     }
 }

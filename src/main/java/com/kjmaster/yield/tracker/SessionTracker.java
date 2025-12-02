@@ -1,16 +1,17 @@
 package com.kjmaster.yield.tracker;
 
-import com.kjmaster.yield.api.IProjectManager;
-import com.kjmaster.yield.api.ISessionTracker;
+import com.kjmaster.yield.api.IProjectProvider;
+import com.kjmaster.yield.api.ISessionController;
+import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.Optional;
 
-public class SessionTracker implements ISessionTracker {
+public class SessionTracker implements ISessionStatus, ISessionController {
 
-    private final IProjectManager projectManager;
+    private final IProjectProvider projectProvider;
 
     // Components
     private final TrackerState state;
@@ -20,11 +21,15 @@ public class SessionTracker implements ISessionTracker {
     private boolean isRunning = false;
     private long sessionStartTime = 0;
 
-    public SessionTracker(IProjectManager projectManager) {
-        this.projectManager = projectManager;
+    public SessionTracker(IProjectProvider projectProvider) {
+        this.projectProvider = projectProvider;
         this.state = new TrackerState();
         this.monitor = new InventoryMonitor();
         this.engine = new TrackerEngine(state, monitor);
+    }
+
+    public InventoryMonitor getMonitor() {
+        return monitor;
     }
 
     @Override
@@ -35,15 +40,13 @@ public class SessionTracker implements ISessionTracker {
         state.clear();
         engine.reset();
 
-        monitor.clearDirty();
-        monitor.setAllDirty(); // Force initial scan
-        monitor.register();    // Start listening to events
+        monitor.clearAllDirty();
+        monitor.markAllDirty(); // Force initial scan
     }
 
     @Override
     public void stopSession() {
         isRunning = false;
-        monitor.unregister();
     }
 
     @Override
@@ -53,7 +56,7 @@ public class SessionTracker implements ISessionTracker {
 
     @Override
     public void setDirty() {
-        monitor.setAllDirty();
+        monitor.markAllDirty();
     }
 
     @Override
@@ -64,8 +67,19 @@ public class SessionTracker implements ISessionTracker {
 
     @Override
     public GoalTracker getTracker(ProjectGoal goal) {
-        // If not present, create it. Engine will sync it later, or we create it here.
-        return state.getTrackers().computeIfAbsent(goal, g -> new GoalTracker(g, engine.getTimeSource()));
+        // 1. Look up by UUID (Persistent Identity)
+        // This ensures that if the Goal Record is replaced (e.g. amount changed),
+        // we still find the existing tracker for that logical goal.
+        GoalTracker tracker = state.getTrackers().computeIfAbsent(
+                goal.id(),
+                uuid -> new GoalTracker(goal, engine.getTimeSource())
+        );
+
+        // 2. Sync Definition
+        // Ensure the tracker knows about the latest goal state (e.g. new target amount)
+        tracker.updateGoalDefinition(goal);
+
+        return tracker;
     }
 
     @Override
@@ -82,10 +96,8 @@ public class SessionTracker implements ISessionTracker {
     @Override
     public void onTick(Player player) {
         if (!isRunning || player == null) return;
-
-        Optional<YieldProject> projectOpt = projectManager.getActiveProject();
+        Optional<YieldProject> projectOpt = projectProvider.getActiveProject();
         if (projectOpt.isEmpty()) return;
-
         engine.onTick(player, projectOpt.get());
     }
 }

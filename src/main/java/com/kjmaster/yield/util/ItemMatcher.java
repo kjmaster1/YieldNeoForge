@@ -18,17 +18,17 @@ public class ItemMatcher {
 
         // 1. Tag Mode: Checks if item belongs to the configured Tag
         // Check this first as it encompasses multiple Item Types
-        if (goal.getTargetTag().isPresent()) {
-            return source.is(goal.getTargetTag().get());
+        if (goal.targetTag().isPresent()) {
+            return source.is(goal.targetTag().get());
         }
 
         // 2. Base Item Check (Required for both Fuzzy and Strict)
-        if (source.getItem() != goal.getItem()) {
+        if (source.getItem() != goal.item()) {
             return false;
         }
 
         // 3. Strict Mode: Checks Data Components
-        if (goal.isStrict()) {
+        if (goal.strict()) {
             return areComponentsEqualIgnoringDamage(source, goal.getRenderStack());
         }
 

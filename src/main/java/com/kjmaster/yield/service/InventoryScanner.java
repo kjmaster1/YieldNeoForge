@@ -15,27 +15,24 @@ public class InventoryScanner {
     private final List<IInventoryProvider> providers = new ArrayList<>();
 
     public InventoryScanner() {
-        // Always add Vanilla support
         providers.add(new VanillaInventoryProvider());
-
-        // Conditionally add Curios support
         if (ModList.get().isLoaded("curios")) {
             providers.add(new CuriosInventoryProvider());
         }
     }
 
-    public void updateTrackerCounts(Player player, Map<Item, List<GoalTracker>> itemTrackers, List<GoalTracker> tagTrackers) {
-        scan(player, itemTrackers, tagTrackers, null);
+    public void updateTrackerCounts(Player player, Map<Item, List<GoalTracker>> itemTrackers) {
+        scan(player, itemTrackers, null);
     }
 
     public void updateSpecificCounts(Player player, Item targetItem, List<GoalTracker> trackers) {
         Map<Item, List<GoalTracker>> specificMap = Map.of(targetItem, trackers);
-        scan(player, specificMap, null, targetItem);
+        scan(player, specificMap, targetItem);
     }
 
-    private void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, List<GoalTracker> tagTrackers, Item targetItemFilter) {
+    private void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, Item targetItemFilter) {
         for (IInventoryProvider provider : providers) {
-            provider.scan(player, itemTrackers, tagTrackers, targetItemFilter);
+            provider.scan(player, itemTrackers, targetItemFilter);
         }
     }
 }

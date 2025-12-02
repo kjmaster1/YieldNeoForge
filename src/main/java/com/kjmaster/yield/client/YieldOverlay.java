@@ -1,19 +1,18 @@
 package com.kjmaster.yield.client;
 
 import com.kjmaster.yield.Config;
-import com.kjmaster.yield.YieldServiceRegistry;
-import com.kjmaster.yield.manager.ProjectManager;
+import com.kjmaster.yield.api.IProjectProvider;
+import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.tracker.GoalTracker;
-import com.kjmaster.yield.tracker.SessionTracker;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.LayeredDraw;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth; // Import for clamping
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.NotNull;
@@ -22,18 +21,13 @@ import java.util.Optional;
 
 public class YieldOverlay implements LayeredDraw.Layer {
 
-    // Constants for layout
-    private static final int PADDING = 5;
-    private static final int ICON_SIZE = 16;
-    private static final int LINE_HEIGHT = 18;
+    private final IProjectProvider projectProvider;
+    private final ISessionStatus sessionStatus;
 
-    // Colors
-    private static final int TEXT_COLOR = Theme.TEXT_PRIMARY;
-    private static final int TEXT_COLOR_PAUSED = Theme.TEXT_SECONDARY;
-
-    private static final int RATE_COLOR = 0x55FF55;
-    private static final int RATE_COLOR_PAUSED = 0xFF888888;
-    private static final int XP_COLOR = 0xAAFFAA;
+    public YieldOverlay(IProjectProvider projectProvider, ISessionStatus sessionStatus) {
+        this.projectProvider = projectProvider;
+        this.sessionStatus = sessionStatus;
+    }
 
     @Override
     public void render(@NotNull GuiGraphics gfx, @NotNull DeltaTracker deltaTracker) {
@@ -41,154 +35,131 @@ public class YieldOverlay implements LayeredDraw.Layer {
         if (mc.options.hideGui || mc.getDebugOverlay().showDebugScreen()) return;
         if (!Config.OVERLAY_ENABLED.get()) return;
 
-
-        Optional<YieldProject> projectOpt = YieldServiceRegistry.getProjectManager().getActiveProject();
+        Optional<YieldProject> projectOpt = projectProvider.getActiveProject();
         if (projectOpt.isEmpty()) return;
         YieldProject project = projectOpt.get();
-        boolean isPaused = !YieldServiceRegistry.getSessionTracker().isRunning();
+        boolean isPaused = !sessionStatus.isRunning();
 
-        // 1. Calculate Size
         int width = 150;
         int height = calculateHeight(project);
 
-        // 2. Get Raw Config Coordinates
-        int rawX = Config.OVERLAY_X.get();
-        int rawY = Config.OVERLAY_Y.get();
-
-        // 3. CLAMP coordinates to Screen Bounds
-        // This ensures if the window shrinks, the HUD slides back into view
+        // Calculate absolute position from normalized config
         int screenW = mc.getWindow().getGuiScaledWidth();
         int screenH = mc.getWindow().getGuiScaledHeight();
 
-        int x = Mth.clamp(rawX, 0, screenW - width);
-        int y = Mth.clamp(rawY, 0, screenH - height);
+        double normX = Config.OVERLAY_X.get();
+        double normY = Config.OVERLAY_Y.get();
 
-        // 4. Render
-        renderHud(gfx, mc.font, project, x, y, width, height, isPaused);
+        int x = (int) (screenW * normX);
+        int y = (int) (screenH * normY);
+
+        // Clamp to screen
+        x = Mth.clamp(x, 0, screenW - width);
+        y = Mth.clamp(y, 0, screenH - height);
+
+        renderHud(gfx, mc.font, project, x, y, width, height, isPaused, sessionStatus);
     }
 
     public static int calculateHeight(YieldProject project) {
-        int goalCount = Math.min(project.getGoals().size(), 5);
-        int height = PADDING + LINE_HEIGHT + (goalCount * LINE_HEIGHT) + PADDING;
-        if (project.shouldTrackXp()) {
-            height += LINE_HEIGHT;
-        }
-        return height;
+        int goalCount = Math.min(project.goals().size(), 5);
+        return Theme.PADDING + Theme.OVERLAY_LINE_HEIGHT + (goalCount * Theme.OVERLAY_LINE_HEIGHT) + Theme.PADDING
+                + (project.trackXp() ? Theme.OVERLAY_LINE_HEIGHT : 0);
     }
 
-    /**
-     * Updated static helper that accepts pre-calculated width/height
-     */
-    public static void renderHud(GuiGraphics gfx, Font font, YieldProject project, int x, int y, int width, int height, boolean isPaused) {
+    public static void renderHud(GuiGraphics gfx, Font font, YieldProject project, int x, int y, int width, int height, boolean isPaused, ISessionStatus session) {
         // Draw Background
         int bgColor = Config.OVERLAY_COLOR.get();
         gfx.fill(x, y, x + width, y + height, bgColor);
 
         // --- Header Row ---
-        int currentY = y + PADDING;
+        int currentY = y + Theme.PADDING;
 
-        long durationSecs = YieldServiceRegistry.getSessionTracker().getSessionDuration() / 1000;
+        long durationSecs = session.getSessionDuration() / 1000;
         String timeStr = String.format("%02d:%02d", durationSecs / 60, durationSecs % 60);
         int timeWidth = font.width(timeStr);
-        gfx.drawString(font, Component.literal(timeStr), x + width - PADDING - timeWidth, currentY + 4, isPaused ? 0xFF666666 : 0xAAAAAA, true);
+        gfx.drawString(font, Component.literal(timeStr), x + width - Theme.PADDING - timeWidth, currentY + 4, isPaused ? Theme.OVERLAY_TEXT_PAUSED : Theme.OVERLAY_DASH, true);
 
         String prefix = "Project: ";
         int gap = 5;
-        int maxNameWidth = width - (PADDING * 2) - timeWidth - gap - font.width(prefix);
+        int maxNameWidth = width - (Theme.PADDING * 2) - timeWidth - gap - font.width(prefix);
 
-        String name = project.getName();
-        int nameColor = isPaused ? TEXT_COLOR_PAUSED : TEXT_COLOR;
+        String name = project.name();
+        int nameColor = isPaused ? Theme.TEXT_SECONDARY : Theme.TEXT_PRIMARY;
 
-        if (isPaused) {
-            // Append status
-            name += " (Paused)";
-        }
+        if (isPaused) name += " (Paused)";
 
         if (maxNameWidth > 10) {
             if (font.width(name) > maxNameWidth) {
                 name = font.plainSubstrByWidth(name, maxNameWidth - font.width("...")) + "...";
             }
-            gfx.drawString(font, Component.literal(prefix + name), x + PADDING, currentY + 4, nameColor, true);
+            gfx.drawString(font, Component.literal(prefix + name), x + Theme.PADDING, currentY + 4, nameColor, true);
         } else {
-            gfx.drawString(font, Component.literal("Project"), x + PADDING, currentY + 4, nameColor, true);
+            gfx.drawString(font, Component.literal("Project"), x + Theme.PADDING, currentY + 4, nameColor, true);
         }
 
-        currentY += LINE_HEIGHT;
+        currentY += Theme.OVERLAY_LINE_HEIGHT;
 
         // --- XP Row ---
-        if (project.shouldTrackXp()) {
-            renderXpRow(gfx, font, x + PADDING, currentY, width);
-            currentY += LINE_HEIGHT;
+        if (project.trackXp()) {
+            renderXpRow(gfx, font, x + Theme.PADDING, currentY, width, session);
+            currentY += Theme.OVERLAY_LINE_HEIGHT;
         }
 
         // --- Goals ---
-        int goalCount = Math.min(project.getGoals().size(), 5);
+        int goalCount = Math.min(project.goals().size(), 5);
         for (int i = 0; i < goalCount; i++) {
-            ProjectGoal goal = project.getGoals().get(i);
-            renderGoalRow(gfx, font, goal, x + PADDING, currentY, width, isPaused);
-            currentY += LINE_HEIGHT;
+            ProjectGoal goal = project.goals().get(i);
+            renderGoalRow(gfx, font, goal, x + Theme.PADDING, currentY, width, isPaused, session);
+            currentY += Theme.OVERLAY_LINE_HEIGHT;
         }
     }
 
-    // ... renderXpRow and renderGoalRow remain unchanged ...
-    private static void renderXpRow(GuiGraphics gfx, Font font, int x, int y, int totalWidth) {
+    private static void renderXpRow(GuiGraphics gfx, Font font, int x, int y, int totalWidth, ISessionStatus session) {
         ItemStack icon = new ItemStack(Items.EXPERIENCE_BOTTLE);
         gfx.renderItem(icon, x, y);
-        gfx.drawString(font, Component.literal("Experience"), x + ICON_SIZE + 4, y + 4, XP_COLOR, true);
+        gfx.drawString(font, Component.literal("Experience"), x + Theme.OVERLAY_ICON_SIZE + 4, y + 4, Theme.OVERLAY_XP_LABEL, true);
 
-        int xpRate = (int) YieldServiceRegistry.getSessionTracker().getXpPerHour();
+        int xpRate = (int) session.getXpPerHour();
         if (xpRate > 0) {
             String rateStr = xpRate + " XP/h";
             int rateWidth = font.width(rateStr);
-            gfx.drawString(font, Component.literal(rateStr), (x + totalWidth - (PADDING * 2)) - rateWidth, y + 4, RATE_COLOR, true);
+            gfx.drawString(font, Component.literal(rateStr), (x + totalWidth - (Theme.PADDING * 2)) - rateWidth, y + 4, Theme.COLOR_XP, true);
         } else {
-            gfx.drawString(font, Component.literal("-"), (x + totalWidth - (PADDING * 2)) - 5, y + 4, 0xAAAAAA, true);
+            gfx.drawString(font, Component.literal("-"), (x + totalWidth - (Theme.PADDING * 2)) - 5, y + 4, Theme.OVERLAY_DASH, true);
         }
     }
 
-    private static String formatEta(double hours) {
-        if (Double.isInfinite(hours) || hours <= 0) return "-";
-        int totalMinutes = (int) (hours * 60);
-        if (totalMinutes < 60) {
-            return totalMinutes + "m";
-        }
-        return String.format("%dh %dm", totalMinutes / 60, totalMinutes % 60);
-    }
-
-    private static void renderGoalRow(GuiGraphics gfx, Font font, ProjectGoal goal, int x, int y, int totalWidth, boolean isPaused) {
+    private static void renderGoalRow(GuiGraphics gfx, Font font, ProjectGoal goal, int x, int y, int totalWidth, boolean isPaused, ISessionStatus session) {
         ItemStack icon = goal.getRenderStack();
         gfx.renderItem(icon, x, y);
 
-        GoalTracker tracker = YieldServiceRegistry.getSessionTracker().getTracker(goal);
-
-        String progress = String.format("%d/%d", tracker.getCurrentCount(), goal.getTargetAmount());
-
-        int textColor = isPaused ? TEXT_COLOR_PAUSED : TEXT_COLOR;
-        gfx.drawString(font, Component.literal(progress), x + ICON_SIZE + 4, y + 4, textColor, true);
+        GoalTracker tracker = session.getTracker(goal);
+        String progress = String.format("%d/%d", tracker.getCurrentCount(), goal.targetAmount());
+        int textColor = isPaused ? Theme.TEXT_SECONDARY : Theme.TEXT_PRIMARY;
+        gfx.drawString(font, Component.literal(progress), x + Theme.OVERLAY_ICON_SIZE + 4, y + 4, textColor, true);
 
         double rate = tracker.getItemsPerHour();
 
         if (rate > 0) {
-            // 1. Calculate ETA
-            int remaining = Math.max(0, goal.getTargetAmount() - tracker.getCurrentCount());
+            int remaining = Math.max(0, goal.targetAmount() - tracker.getCurrentCount());
             String rightText;
-
             if (remaining > 0) {
                 String eta = formatEta(remaining / rate);
-                // Format: "1200/h (45m)"
                 rightText = String.format("%.0f/h (%s)", rate, eta);
             } else {
                 rightText = String.format("%.0f/h", rate);
             }
 
             int rightTextWidth = font.width(rightText);
-            int rateColor = isPaused ? RATE_COLOR_PAUSED : RATE_COLOR;
-
-            gfx.drawString(font, Component.literal(rightText), (x + totalWidth - (PADDING * 2)) - rightTextWidth, y + 4, rateColor, true);
+            int rateColor = isPaused ? Theme.OVERLAY_RATE_PAUSED : Theme.OVERLAY_RATE;
+            gfx.drawString(font, Component.literal(rightText), (x + totalWidth - (Theme.PADDING * 2)) - rightTextWidth, y + 4, rateColor, true);
         }
     }
 
-    public static void renderHud(GuiGraphics gfx, Font font, YieldProject project, int x, int y, int width, int height) {
-        renderHud(gfx, font, project, x, y, width, height, false);
+    private static String formatEta(double hours) {
+        if (Double.isInfinite(hours) || hours <= 0) return "-";
+        int totalMinutes = (int) (hours * 60);
+        if (totalMinutes < 60) return totalMinutes + "m";
+        return String.format("%dh %dm", totalMinutes / 60, totalMinutes % 60);
     }
 }

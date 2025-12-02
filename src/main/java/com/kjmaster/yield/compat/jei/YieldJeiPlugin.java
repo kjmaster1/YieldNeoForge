@@ -45,6 +45,8 @@ public class YieldJeiPlugin implements IModPlugin {
                 List<Target<I>> targets = new ArrayList<>();
                 Object innerIngredient = typedIngredient.getIngredient();
 
+                if (Yield.getInstance() == null || Yield.getInstance().getProjectManager() == null) return targets;
+
                 if (!(innerIngredient instanceof ItemStack) || screen.getSelectedProject() == null || screen.getEditingGoal() != null) {
                     return targets;
                 }

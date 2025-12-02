@@ -2,10 +2,7 @@ package com.kjmaster.yield.api;
 
 import com.kjmaster.yield.project.YieldProject;
 
-import java.util.List;
-import java.util.Optional;
-
-public interface IProjectManager {
+public interface IProjectController {
     /**
      * Creates a new project with the given name and saves it.
      *
@@ -20,26 +17,19 @@ public interface IProjectManager {
      */
     void deleteProject(YieldProject project);
 
+
+    /**
+     * Updates an existing project state.
+     * Since YieldProject is immutable, this replaces the old instance with the new one based on ID.
+     */
+    void updateProject(YieldProject newProjectState);
+
     /**
      * Sets the currently active project.
      *
      * @param project The project to activate.
      */
     void setActiveProject(YieldProject project);
-
-    /**
-     * Retrieves the currently active project, if one exists.
-     *
-     * @return An Optional containing the active project, or empty.
-     */
-    Optional<YieldProject> getActiveProject();
-
-    /**
-     * Returns the list of all loaded projects.
-     *
-     * @return A list of YieldProject.
-     */
-    List<YieldProject> getProjects();
 
     /**
      * Clears all loaded projects and active state.

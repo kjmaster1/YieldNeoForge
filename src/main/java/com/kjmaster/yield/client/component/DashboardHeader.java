@@ -1,6 +1,8 @@
 package com.kjmaster.yield.client.component;
 
-import com.kjmaster.yield.YieldServiceRegistry;
+import com.kjmaster.yield.api.IProjectController;
+import com.kjmaster.yield.api.IProjectProvider;
+import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.project.YieldProject;
 import net.minecraft.client.Minecraft;
@@ -17,33 +19,39 @@ import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
+import java.util.function.Consumer;
 
 public class DashboardHeader implements Renderable, GuiEventListener, NarratableEntry {
 
     private final Minecraft minecraft;
     private final Font font;
+    private final IProjectController projectController;
+    private final ISessionStatus sessionStatus;
+    private final IProjectProvider projectProvider;
 
-    // Bounds
     private int x, y, width, height;
 
-    // Widgets
     private EditBox nameInput;
     private Button startStopButton;
     private Button addGoalButton;
     private Button deleteButton;
-    private LinearLayout buttonLayout;
 
-    // State
+    private LinearLayout rootLayout;
+
     private YieldProject currentProject;
-
-    // Callbacks
     private Runnable onAddGoalClicked;
     private Runnable onDeleteProjectClicked;
     private Runnable onStartStopClicked;
 
-    public DashboardHeader() {
+    // NEW: Callback for name updates
+    private Consumer<YieldProject> onProjectNameUpdated;
+
+    public DashboardHeader(IProjectProvider projectProvider, IProjectController projectController, ISessionStatus sessionStatus) {
         this.minecraft = Minecraft.getInstance();
         this.font = minecraft.font;
+        this.projectProvider = projectProvider;
+        this.projectController = projectController;
+        this.sessionStatus = sessionStatus;
         initWidgets();
     }
 
@@ -51,9 +59,17 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
         this.nameInput = new EditBox(this.font, 0, 0, 100, 20, Component.translatable("yield.label.project_name"));
         this.nameInput.setMaxLength(32);
         this.nameInput.setResponder(text -> {
-            if (currentProject != null && !text.equals(currentProject.getName())) {
-                currentProject.setName(text);
-                YieldServiceRegistry.getProjectManager().save();
+            if (currentProject != null && !text.equals(currentProject.name())) {
+                // 1. Create updated record
+                YieldProject updated = currentProject.withName(text);
+
+                // 2. Persist change
+                projectController.updateProject(updated);
+
+                // 3. Notify listener (Screen) to refresh sidebar
+                if (onProjectNameUpdated != null) {
+                    onProjectNameUpdated.accept(updated);
+                }
             }
         });
 
@@ -69,10 +85,15 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
             if (onDeleteProjectClicked != null) onDeleteProjectClicked.run();
         }).width(60).build();
 
-        this.buttonLayout = LinearLayout.horizontal().spacing(4);
-        this.buttonLayout.addChild(this.startStopButton);
-        this.buttonLayout.addChild(this.addGoalButton);
-        this.buttonLayout.addChild(this.deleteButton);
+        this.rootLayout = LinearLayout.horizontal().spacing(10);
+        this.rootLayout.addChild(this.nameInput);
+
+        LinearLayout buttonRow = LinearLayout.horizontal().spacing(4);
+        buttonRow.addChild(this.startStopButton);
+        buttonRow.addChild(this.addGoalButton);
+        buttonRow.addChild(this.deleteButton);
+
+        this.rootLayout.addChild(buttonRow);
     }
 
     public void setCallbacks(Runnable onStartStop, Runnable onAddGoal, Runnable onDelete) {
@@ -81,11 +102,16 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
         this.onDeleteProjectClicked = onDelete;
     }
 
+    // NEW: Setter for the name update listener
+    public void setOnProjectNameUpdated(Consumer<YieldProject> listener) {
+        this.onProjectNameUpdated = listener;
+    }
+
     public void setProject(YieldProject project) {
         this.currentProject = project;
         if (project != null) {
-            if (!nameInput.getValue().equals(project.getName())) {
-                nameInput.setValue(project.getName());
+            if (!nameInput.getValue().equals(project.name())) {
+                nameInput.setValue(project.name());
             }
             updateButtonStates();
         } else {
@@ -95,17 +121,15 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
 
     public void updateButtonStates() {
         boolean hasSel = (currentProject != null);
-
         this.nameInput.setVisible(hasSel);
         this.nameInput.setEditable(hasSel);
-
         this.startStopButton.active = hasSel;
         this.addGoalButton.active = hasSel;
         this.deleteButton.active = hasSel;
 
-        if (hasSel && YieldServiceRegistry.getSessionTracker().isRunning()) {
-            Optional<YieldProject> active = YieldServiceRegistry.getProjectManager().getActiveProject();
-            boolean isActive = active.isPresent() && active.get().getId().equals(currentProject.getId());
+        if (hasSel && sessionStatus.isRunning()) {
+            Optional<YieldProject> active = projectProvider.getActiveProject();
+            boolean isActive = active.isPresent() && active.get().id().equals(currentProject.id());
             this.startStopButton.setMessage(isActive ? Component.translatable("yield.label.stop") : Component.translatable("yield.label.switch"));
         } else {
             this.startStopButton.setMessage(Component.translatable("yield.label.start"));
@@ -118,44 +142,21 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
         this.width = width;
         this.height = height;
 
-        // 1. Arrange Right-Side Buttons
-        this.buttonLayout.arrangeElements();
-        int buttonsWidth = this.buttonLayout.getWidth();
+        this.rootLayout.setPosition(x, y + Theme.PADDING);
 
-        // Calculate Right Alignment
-        // x = left edge of content area
-        // width = total width of content area
-        // buttonsX = x + width - buttonsWidth -> Pins buttons to the far right
-        int idealX = x + width - buttonsWidth;
+        int buttonRowWidth = 80 + 4 + 60 + 4 + 60;
+        int padding = 20;
+        int inputWidth = Math.max(50, width - buttonRowWidth - padding);
 
-        // Safety: Clamp to 'x' to ensure they don't slide off-screen to the left if window is tiny
-        int buttonsX = Math.max(x, idealX);
-        int buttonsY = y + Theme.PADDING;
+        this.nameInput.setWidth(inputWidth);
+        this.nameInput.setHeight(20);
 
-        this.buttonLayout.setPosition(buttonsX, buttonsY);
-
-        // 2. Arrange Name Input (Left side)
-        // It fills the space between 'x' and the start of the buttons
-        int gap = 10;
-        int inputAvailableWidth = buttonsX - x - gap;
-
-        this.nameInput.setX(x);
-        this.nameInput.setY(buttonsY);
-
-        // Hide input if there is no room (prevent overlap)
-        if (inputAvailableWidth < 50) {
-            this.nameInput.setWidth(0);
-            this.nameInput.setVisible(false);
-        } else {
-            this.nameInput.setWidth(inputAvailableWidth);
-            this.nameInput.setVisible(currentProject != null);
-        }
+        this.rootLayout.arrangeElements();
     }
 
     @Override
     public void render(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
         if (currentProject == null) return;
-
         this.nameInput.render(gfx, mouseX, mouseY, partialTick);
         this.startStopButton.render(gfx, mouseX, mouseY, partialTick);
         this.addGoalButton.render(gfx, mouseX, mouseY, partialTick);
@@ -172,6 +173,11 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
     }
 
     @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        return this.nameInput.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
     public boolean charTyped(char codePoint, int modifiers) {
         return this.nameInput.charTyped(codePoint, modifiers);
     }
@@ -182,11 +188,22 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
     }
 
     @Override
-    public void setFocused(boolean focused) {}
+    public void setFocused(boolean focused) {
+        nameInput.setFocused(focused);
+    }
+
     @Override
-    public boolean isFocused() { return nameInput.isFocused(); }
+    public boolean isFocused() {
+        return nameInput.isFocused();
+    }
+
     @Override
-    public @NotNull NarrationPriority narrationPriority() { return NarrationPriority.NONE; }
+    public @NotNull NarrationPriority narrationPriority() {
+        return nameInput.isFocused() ? NarrationPriority.FOCUSED : NarrationPriority.NONE;
+    }
+
     @Override
-    public void updateNarration(@NotNull NarrationElementOutput narrationElementOutput) {}
+    public void updateNarration(@NotNull NarrationElementOutput narrationElementOutput) {
+        nameInput.updateNarration(narrationElementOutput);
+    }
 }

@@ -35,35 +35,33 @@ public class ProjectRepository {
 
         try (FileReader reader = new FileReader(file)) {
             JsonElement json = GSON.fromJson(reader, JsonElement.class);
-            YieldProject.CODEC.listOf()
-                    .parse(JsonOps.INSTANCE, json)
-                    .resultOrPartial(err -> Yield.LOGGER.error("Failed to parse projects: {}", err))
-                    .ifPresent(projects::addAll);
+
+            // Fix: Check for null if file is empty
+            if (json != null) {
+                YieldProject.CODEC.listOf()
+                        .parse(JsonOps.INSTANCE, json)
+                        .resultOrPartial(err -> Yield.LOGGER.error("Failed to parse projects: {}", err))
+                        .ifPresent(projects::addAll);
+            }
         } catch (IOException e) {
             Yield.LOGGER.error("Could not load Yield projects", e);
         }
         return projects;
     }
 
-    public void save(List<YieldProject> projects) {
-        // 1. Serialize State
-        // Create a deep copy or use the list if thread-safe.
-        // Serialization should happen on the calling thread or safely.
-        // Here we rely on the Codec to create the JsonElement.
+    // Refactored: Accept file parameter to support "Capture-then-Write" (Race Condition Fix)
+    public void save(List<YieldProject> projects, File targetFile) {
         var result = YieldProject.CODEC.listOf().encodeStart(JsonOps.INSTANCE, projects);
 
         result.resultOrPartial(Yield.LOGGER::error).ifPresent(json -> {
             try {
-                // 2. Prepare Files
-                File targetFile = getStorageFile();
+                // Use passed targetFile instead of re-calculating (which might fail if world closed)
                 File tempFile = new File(targetFile.getParentFile(), FILE_NAME + ".tmp");
 
-                // 3. Write to Temp File
                 try (FileWriter writer = new FileWriter(tempFile)) {
                     GSON.toJson(json, writer);
                 }
 
-                // 4. Atomic Move (Replace original with Temp)
                 Files.move(
                         tempFile.toPath(),
                         targetFile.toPath(),
@@ -77,26 +75,23 @@ public class ProjectRepository {
         });
     }
 
-    private File getStorageFile() {
+    // Made public so ProjectManager can capture the path synchronously
+    public File getStorageFile() {
         Minecraft mc = Minecraft.getInstance();
         String folderName;
         Path storageDir;
 
         if (mc.getSingleplayerServer() != null) {
-            // Singleplayer: Use World Name (Level Name)
             MinecraftServer server = mc.getSingleplayerServer();
             storageDir = server.getWorldPath(new LevelResource("yield"));
         } else {
-            // Multiplayer: Hash the IP to ensure safe filename
             ServerData serverData = mc.getCurrentServer();
             if (serverData != null) {
-                folderName = DigestUtils.sha256Hex(serverData.ip);
+                String rawId = serverData.ip + "_" + serverData.name;
+                folderName = DigestUtils.sha256Hex(rawId);
             } else {
                 folderName = "local_fallback";
             }
-
-            // Sanitize for safety
-            folderName = folderName.replaceAll("[^a-zA-Z0-9.\\-_]", "_");
 
             storageDir = FMLPaths.CONFIGDIR.get()
                     .resolve("yield")

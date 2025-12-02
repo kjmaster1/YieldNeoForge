@@ -6,74 +6,71 @@ import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.service.InventoryScanner;
 import com.kjmaster.yield.time.GameTickSource;
 import com.kjmaster.yield.time.TimeSource;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 public class TrackerEngine {
 
     private final TrackerState state;
     private final InventoryMonitor monitor;
     private final InventoryScanner scanner;
-
-    // Time & Rates
     private final TimeSource timeSource;
-    private final RateCalculator xpCalculator;
 
+    private RateCalculator xpCalculator;
     private int tickCounter = 0;
     private double cachedXpRate = 0.0;
+
+    // Performance Throttling
+    private int scanThrottleCounter = 0;
+    private static final int SCAN_INTERVAL = 4;
 
     public TrackerEngine(TrackerState state, InventoryMonitor monitor) {
         this.state = state;
         this.monitor = monitor;
         this.scanner = new InventoryScanner();
-
-        // Use GameTickSource for Pausable Game Time
         this.timeSource = new GameTickSource();
-        this.xpCalculator = new RateCalculator(Config.RATE_WINDOW.get(), timeSource);
     }
 
-    public TimeSource getTimeSource() {
-        return timeSource;
-    }
+    public TimeSource getTimeSource() { return timeSource; }
 
     public void reset() {
+        this.xpCalculator = new RateCalculator(Config.RATE_WINDOW.get(), timeSource);
         this.xpCalculator.clear();
         this.tickCounter = 0;
         this.cachedXpRate = 0.0;
+        this.scanThrottleCounter = 0;
         this.timeSource.reset();
     }
 
-    public double getXpRate() {
-        return cachedXpRate;
-    }
+    public double getXpRate() { return cachedXpRate; }
 
     public void addXp(int amount) {
-        xpCalculator.addGain(amount);
+        if (xpCalculator != null) xpCalculator.addGain(amount);
     }
 
     public void onTick(Player player, YieldProject project) {
-        // 1. Sync Trackers with Project Goals (Ensure they exist)
-        ensureTrackersExist(project);
+        if (xpCalculator == null) return;
 
-        // 2. Check Inventory Changes
-        monitor.checkForNativeChanges(player);
+        // 1. Sync Trackers (Handle Additions, Removals, and Modifications)
+        syncTrackers(project);
 
-        if (monitor.isAllDirty()) {
-            // Full Scan
-            performFullScan(player);
-            monitor.clearDirty();
-        } else if (!monitor.getDirtyItems().isEmpty()) {
-            // Granular Scan
-            performGranularScan(player);
-            monitor.clearDirty();
+        // 2. XP Logic
+        if (project.trackXp()) {
+            updateXpTracking(player);
         }
 
-        // 3. XP Logic
-        if (project.shouldTrackXp()) {
-            updateXpTracking(player);
+        // 3. Inventory Logic
+        scanThrottleCounter++;
+        if (scanThrottleCounter >= SCAN_INTERVAL) {
+            scanThrottleCounter = 0;
+            processInventoryUpdates(player);
         }
 
         // 4. Rate Updates
@@ -84,43 +81,86 @@ public class TrackerEngine {
         }
     }
 
-    private void ensureTrackersExist(YieldProject project) {
-        boolean changed = false;
-        for (ProjectGoal goal : project.getGoals()) {
-            if (!state.getTrackers().containsKey(goal)) {
-                state.getTrackers().put(goal, new GoalTracker(goal, this.timeSource));
-                changed = true;
+    private void syncTrackers(YieldProject project) {
+        boolean cacheRebuildNeeded = false;
+        Set<UUID> activeGoalIds = new HashSet<>();
+
+        // A. Update or Add Goals
+        for (ProjectGoal goal : project.goals()) {
+            activeGoalIds.add(goal.id());
+            GoalTracker tracker = state.getTrackers().get(goal.id());
+
+            if (tracker == null) {
+                // New Goal -> Create Tracker
+                state.getTrackers().put(goal.id(), new GoalTracker(goal, this.timeSource));
+                cacheRebuildNeeded = true;
+            } else {
+                // Existing Goal -> Check for structural changes
+                ProjectGoal oldGoal = tracker.getGoal();
+
+                // Always update the definition to capture Amount changes
+                tracker.updateGoalDefinition(goal);
+
+                // If Item, Tag, or Strictness changed, we MUST rebuild the lookup map
+                if (isStructuralChange(oldGoal, goal)) {
+                    cacheRebuildNeeded = true;
+                }
             }
         }
-        if (changed || state.getTrackers().isEmpty()) {
+
+        // B. Remove Deleted Goals
+        // If a tracker exists in state but its ID is not in the current project, remove it.
+        boolean removed = state.getTrackers().keySet().removeIf(uuid -> !activeGoalIds.contains(uuid));
+        if (removed) {
+            cacheRebuildNeeded = true;
+        }
+
+        // C. Rebuild Cache if necessary
+        if (cacheRebuildNeeded || (state.getItemSpecificTrackers().isEmpty() && !state.getTrackers().isEmpty())) {
             rebuildLookupCache();
+        }
+    }
+
+    private boolean isStructuralChange(ProjectGoal g1, ProjectGoal g2) {
+        // Returns true if any property affecting the Scanner Map has changed
+        return !g1.item().equals(g2.item()) ||
+                !g1.targetTag().equals(g2.targetTag()) ||
+                g1.strict() != g2.strict();
+    }
+
+    private void processInventoryUpdates(Player player) {
+        monitor.checkForNativeChanges(player);
+        if (monitor.isAllDirty()) {
+            performFullScan(player);
+            monitor.clearAllDirty();
+        } else if (!monitor.getDirtyItems().isEmpty()) {
+            performGranularScan(player);
+            monitor.clearAllDirty();
         }
     }
 
     private void rebuildLookupCache() {
         state.getItemSpecificTrackers().clear();
-        state.getTagTrackers().clear();
-
         for (GoalTracker tracker : state.getTrackers().values()) {
             ProjectGoal goal = tracker.getGoal();
-            if (goal.getTargetTag().isPresent()) {
-                state.getTagTrackers().add(tracker);
+            if (goal.targetTag().isPresent()) {
+                var tagKey = goal.targetTag().get();
+                for (var holder : BuiltInRegistries.ITEM.getTagOrEmpty(tagKey)) {
+                    state.getItemSpecificTrackers()
+                            .computeIfAbsent(holder.value(), k -> new ArrayList<>())
+                            .add(tracker);
+                }
             } else {
                 state.getItemSpecificTrackers()
-                        .computeIfAbsent(goal.getItem(), k -> new ArrayList<>())
+                        .computeIfAbsent(goal.item(), k -> new ArrayList<>())
                         .add(tracker);
             }
         }
     }
 
     private void performFullScan(Player player) {
-        // Reset ALL trackers
         for (GoalTracker tracker : state.getTrackers().values()) tracker.resetTempCount();
-
-        // Scan ALL
-        scanner.updateTrackerCounts(player, state.getItemSpecificTrackers(), state.getTagTrackers());
-
-        // Commit ALL
+        scanner.updateTrackerCounts(player, state.getItemSpecificTrackers());
         for (GoalTracker tracker : state.getTrackers().values()) tracker.commitCounts();
     }
 
@@ -128,33 +168,18 @@ public class TrackerEngine {
         for (Item item : monitor.getDirtyItems()) {
             List<GoalTracker> trackers = state.getItemSpecificTrackers().get(item);
             if (trackers != null) {
-                // Reset only these
                 for (GoalTracker t : trackers) t.resetTempCount();
-
-                // Scan only this item type
                 scanner.updateSpecificCounts(player, item, trackers);
-
-                // Commit only these
                 for (GoalTracker t : trackers) t.commitCounts();
             }
         }
-
-        // Note: Tag Trackers usually require full scan or complex checking.
-        // For simplicity, if we have active tag trackers, we might force full scan
-        // or iterate them. Here we skip tag optimization for brevity.
-        // Fallback: If tags are used, granular updates are risky without checking tag membership
-        // For safety in this refactor, if tags exist, just do full scan?
-        // Or leave it for now (Tag items won't update on granular events unless specifically handled).
-        // Let's rely on Full Scans for Tag Heavy projects for now.
     }
 
     private void updateXpTracking(Player player) {
         int currentXp = player.totalExperience;
         if (state.getLastTotalXp() != -1) {
             int diff = currentXp - state.getLastTotalXp();
-            if (diff > 0) {
-                xpCalculator.addGain(diff);
-            }
+            if (diff > 0) xpCalculator.addGain(diff);
         }
         state.setLastTotalXp(currentXp);
     }
@@ -163,6 +188,8 @@ public class TrackerEngine {
         for (GoalTracker tracker : state.getTrackers().values()) {
             tracker.updateRate();
         }
-        this.cachedXpRate = xpCalculator.getItemsPerHour();
+        if (xpCalculator != null) {
+            this.cachedXpRate = xpCalculator.getItemsPerHour();
+        }
     }
 }

@@ -12,26 +12,21 @@ public class ScannerHelper {
 
     /**
      * Shared logic to check a stack against trackers and increment counts.
+     * Uses the optimized Inverted Index from TrackerState.
      */
-    public static void checkAndIncrement(ItemStack stack, Map<Item, List<GoalTracker>> itemTrackers, List<GoalTracker> tagTrackers, Item targetItemFilter) {
+    public static void checkAndIncrement(ItemStack stack, Map<Item, List<GoalTracker>> itemTrackers, Item targetItemFilter) {
         if (stack.isEmpty()) return;
 
-        // Optimization: Filter by target item if strictly scanning for one type (Granular Scan)
+        // Optimization: Granular Scan Filter
         if (targetItemFilter != null && stack.getItem() != targetItemFilter) return;
 
-        // 1. Fast Lookup: Check Item-Specific Trackers
+        // Fast Lookup: O(1) retrieval of relevant trackers
         List<GoalTracker> specific = itemTrackers.get(stack.getItem());
+
         if (specific != null) {
             for (GoalTracker tracker : specific) {
-                if (ItemMatcher.matches(stack, tracker.getGoal())) {
-                    tracker.incrementTempCount(stack.getCount());
-                }
-            }
-        }
-
-        // 2. Tag Lookup: Check Tag-based goals
-        if (tagTrackers != null && !tagTrackers.isEmpty()) {
-            for (GoalTracker tracker : tagTrackers) {
+                // ItemMatcher is still needed to check "Strict Mode" (NBT/Components)
+                // But we already know the Item ID (or Tag membership) matches.
                 if (ItemMatcher.matches(stack, tracker.getGoal())) {
                     tracker.incrementTempCount(stack.getCount());
                 }

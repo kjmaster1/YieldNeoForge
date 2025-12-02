@@ -156,16 +156,6 @@ public class ProjectSidebar extends AbstractWidget {
 
         this.projectList.render(gfx, mouseX, mouseY, partialTick);
         this.footerLayout.visitWidgets(w -> w.render(gfx, mouseX, mouseY, partialTick));
-
-        if (sessionStatus.isRunning()) {
-            YieldProject p = getSelectedProject();
-            if (p != null && p.trackXp()) {
-                int xpRate = (int) sessionStatus.getXpPerHour();
-                int textY = this.xpToggleButton.getY() - 10;
-                int centerX = this.getX() + (this.getWidth() / 2);
-                gfx.drawCenteredString(this.font, Component.literal(xpRate + " XP/hr"), centerX, textY, Theme.COLOR_XP);
-            }
-        }
     }
 
     @Override

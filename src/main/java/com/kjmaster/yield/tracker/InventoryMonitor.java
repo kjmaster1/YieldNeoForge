@@ -2,8 +2,10 @@ package com.kjmaster.yield.tracker;
 
 import com.kjmaster.yield.compat.curios.CuriosInventoryWatcher;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.items.IItemHandler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +23,11 @@ public class InventoryMonitor {
         // 1. Vanilla Strategy
         strategies.add(new VanillaStrategy());
 
-        // 2. Curios Strategy (Conditional)
+        // 2. Capability Strategy (Fix for sync gap)
+        // Monitors standard NeoForge ItemHandlers that might wrap vanilla or provide extra slots
+        strategies.add(new CapabilityStrategy());
+
+        // 3. Curios Strategy (Conditional)
         if (ModList.get().isLoaded("curios")) {
             strategies.add(new CuriosInventoryWatcher());
         }
@@ -32,7 +38,7 @@ public class InventoryMonitor {
     }
 
     // Legacy support for event handlers (mapped to general dirty)
-    public void markItemDirty(Item item) {
+    public void markItemDirty(Object item) {
         markDirty();
     }
     public void markAllDirty() {
@@ -52,8 +58,6 @@ public class InventoryMonitor {
         for (Strategy strategy : strategies) {
             if (strategy.isDirty(player)) {
                 this.dirty = true;
-                // We can break early if dirty, but some strategies might need to update their internal state
-                // regardless (like syncing a version number). Ideally, 'isDirty' updates state and returns result.
             }
         }
     }
@@ -71,6 +75,42 @@ public class InventoryMonitor {
             int currentVersion = player.getInventory().getTimesChanged();
             if (currentVersion != lastInventoryVersion) {
                 lastInventoryVersion = currentVersion;
+                return true;
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Watches the standard ItemHandler capability.
+     * Essential for mods that replace/extend the main inventory without updating the vanilla 'timesChanged' counter.
+     */
+    private static class CapabilityStrategy implements Strategy {
+        private long lastStateHash = 0;
+
+        @Override
+        public boolean isDirty(Player player) {
+            IItemHandler handler = player.getCapability(Capabilities.ItemHandler.ENTITY, null);
+            if (handler == null) return false;
+
+            long currentHash = 1;
+            for (int i = 0; i < handler.getSlots(); i++) {
+                ItemStack stack = handler.getStackInSlot(i);
+                if (stack.isEmpty()) {
+                    currentHash = 31 * currentHash;
+                } else {
+                    // Calculate a signature based on Item, Count, and Components
+                    long elementHash = System.identityHashCode(stack.getItem());
+                    elementHash = 31 * elementHash + stack.getCount();
+                    // Using isComponentsPatchEmpty check to be safe/consistent with Curios logic
+                    elementHash = 31 * elementHash + (!stack.isComponentsPatchEmpty() ? stack.getComponents().hashCode() : 0);
+
+                    currentHash = 31 * currentHash + elementHash;
+                }
+            }
+
+            if (currentHash != lastStateHash) {
+                lastStateHash = currentHash;
                 return true;
             }
             return false;

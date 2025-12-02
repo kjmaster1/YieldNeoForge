@@ -21,11 +21,17 @@ public class GoalDomainService {
             // to prevent duplicates, even if the strictness differs slightly
             // (prioritize keeping the existing goal's strictness but updating the count).
             if (shouldMerge(existing, goal)) {
+                // FIX: Calculate new strictness.
+                // If the incoming goal is fuzzy (goal.strict() is false), the merged goal MUST become fuzzy.
+                // Otherwise, the items the user is trying to track (which likely don't match the strict components)
+                // will not be counted, despite the target amount increasing.
+                boolean newStrictness = existing.strict() && goal.strict();
+
                 ProjectGoal mergedGoal = new ProjectGoal(
                         existing.id(), // Keep original ID
                         existing.item(),
                         existing.targetAmount() + goal.targetAmount(), // Accumulate amount
-                        existing.strict(), // Preserve existing strictness setting
+                        newStrictness, // FIX: Use calculated strictness
                         existing.components(),
                         existing.targetTag(),
                         existing.ignoredComponents()

@@ -75,6 +75,15 @@ public class DashboardViewModel {
     }
 
     private void updateSelection(YieldProject project) {
+        // Redundancy Check: Break infinite loops if the project is identical
+        // This prevents View -> ViewModel -> View loops
+        if (this.selectedProject == project) return;
+        if (this.selectedProject != null && project != null && this.selectedProject.id().equals(project.id())) {
+            // Even if objects differ, if content is identical (Record equals), skip
+            // Note: Project record equality includes all fields.
+            if (this.selectedProject.equals(project)) return;
+        }
+
         this.selectedProject = project;
         if (onSelectionChanged != null) {
             onSelectionChanged.accept(project);

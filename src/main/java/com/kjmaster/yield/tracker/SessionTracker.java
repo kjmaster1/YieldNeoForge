@@ -45,7 +45,7 @@ public class SessionTracker implements ISessionStatus, ISessionController {
         state.clear();
         engine.reset();
 
-        monitor.clearAllDirty();
+        monitor.clearDirty();
         monitor.markAllDirty(); // Force initial scan
         eventBus.post(new YieldEvents.SessionStarted());
     }

@@ -26,11 +26,20 @@ public class ProjectRepository {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String DIR_NAME = "projects";
 
+    // State: Cache the directory to ensure saves go to the same place files were loaded from,
+    // regardless of Minecraft's shutdown state.
+    private File cachedStorageDir;
+
     /**
      * Loads all projects from the project directory.
+     * Updates the cached storage directory based on the current world state.
      */
     public List<YieldProject> loadAll() {
-        File dir = getStorageDirectory();
+        // Critical: Update cache ONLY on load.
+        // This runs during EntityJoinLevel when the world is guaranteed to be valid.
+        this.cachedStorageDir = calculateStorageDirectory();
+
+        File dir = this.cachedStorageDir;
         List<YieldProject> projects = new ArrayList<>();
 
         if (!dir.exists() || !dir.isDirectory()) return projects;
@@ -55,9 +64,10 @@ public class ProjectRepository {
 
     /**
      * Saves a specific project to its own file.
+     * Uses the cached storage directory.
      */
     public boolean saveProject(YieldProject project) {
-        File dir = getStorageDirectory();
+        File dir = getStorageDirectory(); // Uses cache
         if (!dir.exists() && !dir.mkdirs()) {
             Yield.LOGGER.error("Could not create project directory: {}", dir.getAbsolutePath());
             return false;
@@ -90,7 +100,18 @@ public class ProjectRepository {
         }
     }
 
+    /**
+     * Returns the active storage directory.
+     * If not yet cached (e.g. first boot before load), calculates it.
+     */
     public File getStorageDirectory() {
+        if (cachedStorageDir == null) {
+            cachedStorageDir = calculateStorageDirectory();
+        }
+        return cachedStorageDir;
+    }
+
+    private File calculateStorageDirectory() {
         Minecraft mc = Minecraft.getInstance();
         String folderName;
         Path storageDir;
@@ -114,10 +135,5 @@ public class ProjectRepository {
         }
 
         return storageDir.resolve(DIR_NAME).toFile();
-    }
-
-    // Legacy method stub for compatibility during transition if needed
-    public File getStorageFile() {
-        return getStorageDirectory();
     }
 }

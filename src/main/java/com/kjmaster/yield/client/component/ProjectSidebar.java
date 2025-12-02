@@ -4,7 +4,6 @@ import com.kjmaster.yield.api.IProjectController;
 import com.kjmaster.yield.api.IProjectProvider;
 import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.client.Theme;
-import com.kjmaster.yield.client.screen.HudEditorScreen;
 import com.kjmaster.yield.event.internal.YieldEventBus;
 import com.kjmaster.yield.event.internal.YieldEvents;
 import com.kjmaster.yield.project.YieldProject;
@@ -24,6 +23,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 public class ProjectSidebar extends AbstractWidget {
@@ -73,15 +73,16 @@ public class ProjectSidebar extends AbstractWidget {
             this.refreshList();
         });
 
-        // Update selection visualization when active project changes (e.g. via Header start button)
+        // Update selection visualization when active project changes
         eventBus.register(YieldEvents.ActiveProjectChanged.class, event -> {
-            // Force a repaint to update the green indicator
             this.updateWidgetStates();
         });
 
-        // Listen for updates to the current project (e.g. XP toggle change)
+        // Listen for updates (name change, strict toggle) to refresh list visuals
         eventBus.register(YieldEvents.ProjectUpdated.class, event -> {
             updateWidgetStates();
+            // We don't need to rebuild the list here, because the entries now look up data dynamically.
+            // Just triggering a repaint (via updateWidgetStates or implied) is enough.
         });
     }
 
@@ -91,22 +92,19 @@ public class ProjectSidebar extends AbstractWidget {
             if (p != null) {
                 YieldProject updated = p.withTrackXp(!p.trackXp());
                 projectController.updateProject(updated);
-                // No manual refresh needed; EventBus handles ProjectUpdated
             }
         }).width(Theme.SIDEBAR_WIDTH - 10).build();
 
         this.moveHudButton = Button.builder(Component.translatable("yield.label.move_hud"), btn -> {
-            // Note: We might need to inject the Services object just for passing to screens,
-            // or refactor HudEditorScreen to take specific interfaces too.
-            // For now, we assume HudEditor needs a refactor or we pass a constructed object.
-            // Leaving as TODO for HudEditorScreen refactor step.
+            // Placeholder
         }).width(Theme.SIDEBAR_WIDTH - 10).build();
 
         this.newProjectButton = Button.builder(Component.translatable("yield.label.new_project"), btn -> {
             projectController.createProject("New Project");
-            // Auto-select the new project (last in list)
             if (!projectProvider.getProjects().isEmpty()) {
-                selectProject(projectProvider.getProjects().getLast());
+                YieldProject newP = projectProvider.getProjects().getLast();
+                selectProject(newP);
+                if (onProjectSelected != null) onProjectSelected.accept(newP);
             }
         }).width(Theme.SIDEBAR_WIDTH - 10).build();
 
@@ -123,15 +121,13 @@ public class ProjectSidebar extends AbstractWidget {
         int layoutH = this.footerLayout.getHeight();
         int listHeight = height - layoutH - 10;
 
-        this.projectList.updateSizeAndPosition(width, listHeight, 0);
-        this.projectList.setX(this.getX());
+        this.projectList.updateSizeAndPosition(width, listHeight, this.getY());
         updateFooterPosition();
     }
 
     @Override
     public void setX(int x) {
         super.setX(x);
-        this.projectList.setX(x);
         updateFooterPosition();
     }
 
@@ -197,13 +193,13 @@ public class ProjectSidebar extends AbstractWidget {
     public void selectProject(YieldProject project) {
         this.projectList.selectProject(project);
         updateWidgetStates();
-        if(onProjectSelected != null) onProjectSelected.accept(project);
     }
 
     @Nullable
     public YieldProject getSelectedProject() {
         ProjectEntry entry = this.projectList.getSelected();
-        return entry != null ? entry.project : null;
+        // Resolve project dynamically to ensure freshness
+        return entry != null ? entry.resolveProject() : null;
     }
 
     private void updateWidgetStates() {
@@ -225,14 +221,15 @@ public class ProjectSidebar extends AbstractWidget {
         public void refresh() {
             this.clearEntries();
             for (YieldProject p : projectProvider.getProjects()) {
-                this.addEntry(new ProjectEntry(p));
+                this.addEntry(new ProjectEntry(p.id()));
             }
+            this.setScrollAmount(0);
         }
 
         public void selectProject(YieldProject p) {
             if (p == null) { this.setSelected(null); return; }
             for (ProjectEntry entry : this.children()) {
-                if (entry.project.id().equals(p.id())) {
+                if (entry.projectId.equals(p.id())) {
                     this.setSelected(entry);
                     return;
                 }
@@ -245,12 +242,31 @@ public class ProjectSidebar extends AbstractWidget {
     }
 
     public class ProjectEntry extends ObjectSelectionList.Entry<ProjectEntry> {
-        final YieldProject project;
-        public ProjectEntry(YieldProject p) { this.project = p; }
+        final UUID projectId;
 
-        @Override public @NotNull Component getNarration() { return Component.literal(project.name()); }
+        public ProjectEntry(UUID projectId) {
+            this.projectId = projectId;
+        }
 
-        @Override public void render(@NotNull GuiGraphics gfx, int idx, int top, int left, int width, int height, int mx, int my, boolean hover, float pt) {
+        // Helper to get fresh data
+        public YieldProject resolveProject() {
+            return projectProvider.getProjects().stream()
+                    .filter(p -> p.id().equals(projectId))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        @Override
+        public @NotNull Component getNarration() {
+            YieldProject p = resolveProject();
+            return p != null ? Component.literal(p.name()) : Component.empty();
+        }
+
+        @Override
+        public void render(@NotNull GuiGraphics gfx, int idx, int top, int left, int width, int height, int mx, int my, boolean hover, float pt) {
+            YieldProject project = resolveProject();
+            if (project == null) return; // Project deleted but list not yet refreshed?
+
             boolean selected = projectList.getSelected() == this;
             if (selected) {
                 gfx.fill(left, top, left + width - 4, top + height, Theme.LIST_ITEM_SEL_BG);
@@ -270,11 +286,21 @@ public class ProjectSidebar extends AbstractWidget {
             gfx.drawString(font, project.name(), left + 12, top + (height - 9) / 2, color, false);
         }
 
-        @Override public boolean mouseClicked(double mx, double my, int btn) {
+        @Override
+        public boolean mouseClicked(double mx, double my, int btn) {
             if (btn == 0) {
+                YieldProject project = resolveProject();
+                if (project == null) return false;
+
                 projectList.setSelected(this);
-                ProjectSidebar.this.selectProject(this.project);
+                // Visual Update
+                ProjectSidebar.this.selectProject(project);
+
                 Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+
+                // Pass FRESH project object to listener
+                if (onProjectSelected != null) onProjectSelected.accept(project);
+
                 return true;
             }
             return false;

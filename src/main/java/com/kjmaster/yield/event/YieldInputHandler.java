@@ -1,5 +1,6 @@
 package com.kjmaster.yield.event;
 
+import com.kjmaster.yield.Config;
 import com.kjmaster.yield.YieldServices;
 import com.kjmaster.yield.client.KeyBindings;
 import com.kjmaster.yield.client.screen.ProjectSelectionScreen;
@@ -15,7 +16,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import org.lwjgl.glfw.GLFW;
 
@@ -31,21 +32,31 @@ public class YieldInputHandler {
     }
 
     @SubscribeEvent
-    public void onClientTick(ClientTickEvent.Post event) {
+    public void onKeyInput(InputEvent.Key event) {
+        // Only handle PRESS actions (ignore release/repeat)
+        if (event.getAction() != GLFW.GLFW_PRESS) return;
+
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
-        while (KeyBindings.OPEN_DASHBOARD.consumeClick()) {
-            if (mc.screen == null) {
-                mc.setScreen(new YieldDashboardScreen(services));
-            } else if (mc.screen instanceof YieldDashboardScreen) {
-                mc.setScreen(null);
-            }
+        // Check against KeyMappings
+        // We use matches() to respect the user's configured keys/mouse buttons
+        if (KeyBindings.OPEN_DASHBOARD.matches(event.getKey(), event.getScanCode())) {
+            toggleDashboard(mc);
         }
 
-        while (KeyBindings.TOGGLE_OVERLAY.consumeClick()) {
-            // Overlay toggle handled via config in original implementation
-            // Keeping placeholder to match functionality if needed
+        if (KeyBindings.TOGGLE_OVERLAY.matches(event.getKey(), event.getScanCode())) {
+            boolean newState = !Config.OVERLAY_ENABLED.get();
+            Config.OVERLAY_ENABLED.set(newState);
+            Config.SPEC.save();
+        }
+    }
+
+    private void toggleDashboard(Minecraft mc) {
+        if (mc.screen == null) {
+            mc.setScreen(new YieldDashboardScreen(services));
+        } else if (mc.screen instanceof YieldDashboardScreen) {
+            mc.setScreen(null);
         }
     }
 
@@ -54,14 +65,18 @@ public class YieldInputHandler {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
+        // "Quick Track" logic remains here because it interacts with Screen Slots (Mouse),
+        // but we verify the modifier key is held down.
         boolean isTriggerModifierDown = isRawDown(KeyBindings.QUICK_TRACK);
+
+        // Check for Right Click + Modifier
         if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_2 && isTriggerModifierDown) {
             if (event.getScreen() instanceof AbstractContainerScreen<?> containerScreen) {
                 Slot slot = containerScreen.getSlotUnderMouse();
                 if (slot != null && slot.hasItem()) {
                     ItemStack stack = slot.getItem();
                     handleQuickTrack(mc, stack);
-                    event.setCanceled(true);
+                    event.setCanceled(true); // Consume the click so we don't split the stack
                 }
             }
         }
@@ -79,11 +94,14 @@ public class YieldInputHandler {
         List<YieldProject> allProjects = services.projectProvider().getProjects();
         if (allProjects.isEmpty()) {
             services.projectController().createProject("New Project");
-            YieldProject newP = services.projectProvider().getProjects().getLast();
-            services.projectController().setActiveProject(newP);
-            addToProject(newP, stack);
-            services.sessionController().startSession();
-            mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+            // Refresh list from provider to get the new instance
+            if (!services.projectProvider().getProjects().isEmpty()) {
+                YieldProject newP = services.projectProvider().getProjects().getLast();
+                services.projectController().setActiveProject(newP);
+                addToProject(newP, stack);
+                services.sessionController().startSession();
+                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+            }
         } else {
             mc.setScreen(new ProjectSelectionScreen(mc.screen, stack, services));
         }
@@ -96,6 +114,7 @@ public class YieldInputHandler {
     }
 
     private boolean isRawDown(KeyMapping mapping) {
+        // Direct GLFW check is reliable for modifiers held during mouse clicks
         InputConstants.Key key = mapping.getKey();
         long window = Minecraft.getInstance().getWindow().getWindow();
         if (key.getType() == InputConstants.Type.MOUSE) {

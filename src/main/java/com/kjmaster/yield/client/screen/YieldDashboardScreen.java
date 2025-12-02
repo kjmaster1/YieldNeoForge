@@ -26,6 +26,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 import static com.kjmaster.yield.client.Theme.PADDING;
 import static com.kjmaster.yield.client.Theme.TOP_BAR_HEIGHT;
@@ -78,7 +80,6 @@ public class YieldDashboardScreen extends Screen {
         wireViewModel();
 
         // 3. Build Layout Hierarchy
-        // We use a root horizontal layout: [Sidebar] [Vertical Content]
         this.rootLayout.defaultCellSetting().alignVerticallyTop().padding(0);
         this.rootLayout.addChild(projectSidebar);
 
@@ -93,7 +94,18 @@ public class YieldDashboardScreen extends Screen {
         this.rootLayout.visitWidgets(this::addRenderableWidget);
 
         // 5. Layout & Position
+        // IMPORTANT: Must be called before refreshing lists to ensure non-zero geometry
         repositionElements();
+
+        // 6. Refresh Data
+        // Now that size is set, populate the list
+        this.projectSidebar.refreshList();
+
+        // 7. Restore Selection (Triggers ViewModel update -> View update)
+        // We trigger this manually to ensure the visual state matches the ViewModel immediately
+        if (viewModel.getSelectedProject() != null) {
+            updateUiSelection(viewModel.getSelectedProject());
+        }
     }
 
     private void wireViewModel() {
@@ -127,10 +139,6 @@ public class YieldDashboardScreen extends Screen {
         this.goalGrid.setProject(project);
     }
 
-    /**
-     * Declarative-style Layout Calculation.
-     * Calculates component sizes based on screen constraints and applies them.
-     */
     @Override
     protected void repositionElements() {
         // Constants
@@ -157,16 +165,12 @@ public class YieldDashboardScreen extends Screen {
         this.goalGrid.reflow();
     }
 
-    // --- Actions & Helpers ---
-
     private void openItemSelector() {
         if (viewModel.getSelectedProject() == null) return;
         this.minecraft.setScreen(new ItemSelectionScreen(this, this::handleJeiDrop, this::handleTagSelect));
     }
 
     public void updateUiState(YieldProject updatedProject) {
-        // Called by Edit Screen to force refresh if needed, though EventBus usually handles this.
-        // We defer to ViewModel to keep state consistent.
         viewModel.selectProject(updatedProject);
     }
 
@@ -201,7 +205,7 @@ public class YieldDashboardScreen extends Screen {
         var optionalItem = BuiltInRegistries.ITEM.getTag(tag).flatMap(holders -> holders.stream().findFirst()).map(Holder::value);
         Item displayItem = optionalItem.orElse(Items.BARRIER);
 
-        ProjectGoal goal = new ProjectGoal(displayItem, 64, false, java.util.Optional.empty(), java.util.Optional.of(tag));
+        ProjectGoal goal = new ProjectGoal(UUID.randomUUID(), displayItem, 64, false, Optional.empty(), Optional.of(tag));
         YieldProject updated = services.goalDomainService().addGoal(project, goal);
         services.projectController().updateProject(updated);
 

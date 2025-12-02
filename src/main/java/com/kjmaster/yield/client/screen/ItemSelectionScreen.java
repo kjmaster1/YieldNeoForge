@@ -186,13 +186,14 @@ public class ItemSelectionScreen extends Screen {
         // Constructor for Tag
         EntryWrapper(TagKey<Item> tag) {
             this.tag = Optional.of(tag);
-            this.stack = Optional.empty();
 
             // Resolve a display item for the tag
             var optionalHolder = BuiltInRegistries.ITEM.getTag(tag)
                     .flatMap(holders -> holders.stream().findFirst());
 
             this.item = optionalHolder.map(holder -> holder.value()).orElse(Items.BARRIER);
+
+            this.stack = Optional.of(new ItemStack(this.item));
         }
     }
 
@@ -222,7 +223,7 @@ public class ItemSelectionScreen extends Screen {
                     gfx.fill(x, y, x + ItemList.SLOT_SIZE, y + ItemList.SLOT_SIZE, 0x80FFFFFF);
                 }
 
-                ItemStack renderStack = new ItemStack(entry.item);
+                ItemStack renderStack = entry.stack.orElse(new ItemStack(entry.item));
                 gfx.renderItem(renderStack, x + 2, y + 2);
 
                 // If it's a tag, draw a tiny "#" overlay

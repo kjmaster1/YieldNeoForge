@@ -15,30 +15,27 @@ public class GoalTracker {
     private double cachedRate = 0.0;
     private int tempCount = 0;
 
-    // Fix: Persistent completion flag to prevent oscillation spam
     private boolean isCompleted = false;
+    private boolean hasToastFired = false;
 
     public GoalTracker(ProjectGoal goal, TimeSource timeSource) {
         this.goal = goal;
         this.calculator = new RateCalculator(Config.RATE_WINDOW.get(), timeSource);
     }
 
-    // Allow updating the goal definition (e.g. target amount changed)
     public void updateGoalDefinition(ProjectGoal newGoal) {
         this.goal = newGoal;
-        // Reset completion status if the new target is higher than what we have
-        if (this.currentCount < newGoal.targetAmount()) {
-            this.isCompleted = false;
-        }
+        checkCompletionState(this.currentCount);
     }
 
     public void update(int newCount) {
         if (startCount == -1) {
             startCount = newCount;
             currentCount = newCount;
-            // Initialize state: if loaded with enough items, mark complete silently (no toast)
-            if (currentCount >= goal.targetAmount()) {
-                this.isCompleted = true;
+            checkCompletionState(currentCount);
+            // Don't toast on initial load, just mark fired if already complete
+            if (isCompleted) {
+                hasToastFired = true;
             }
             return;
         }
@@ -48,13 +45,28 @@ public class GoalTracker {
             calculator.addGain(delta);
         }
 
-        // Fix: Use latched state to determine if we should toast
-        if (!isCompleted && newCount >= goal.targetAmount()) {
-            this.isCompleted = true;
-            Minecraft.getInstance().getToasts().addToast(new GoalToast(goal));
-        }
-
+        checkCompletionState(newCount);
         this.currentCount = newCount;
+    }
+
+    private void checkCompletionState(int count) {
+        // 1. Status Logic: Always reflect reality
+        this.isCompleted = count >= goal.targetAmount();
+
+        // 2. Notification Logic: Hysteresis
+        if (this.isCompleted) {
+            if (!hasToastFired) {
+                hasToastFired = true;
+                Minecraft.getInstance().getToasts().addToast(new GoalToast(goal));
+            }
+        } else {
+            // Only re-arm the toast if we drop significantly below the target (Hysteresis)
+            // Example: If target is 64, we must drop to 62 or lower to re-arm.
+            // This prevents spam if the user oscillates between 63 and 64.
+            if (count < goal.targetAmount() - 1) {
+                hasToastFired = false;
+            }
+        }
     }
 
     public void resetTempCount() {

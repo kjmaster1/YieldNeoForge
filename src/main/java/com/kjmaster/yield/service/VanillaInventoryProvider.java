@@ -11,50 +11,46 @@ import java.util.function.Consumer;
 
 public class VanillaInventoryProvider implements IInventoryProvider {
 
+    private static final int MAX_DEPTH = 8; // Safety limit
+
     @Override
     public void collect(Player player, Consumer<ItemStack> acceptor) {
-        // Track visited handlers to prevent infinite recursion
         Set<Object> visited = new HashSet<>();
-
-        // 1. Scan Capability Inventory (Modern NeoForge approach for player inv)
         IItemHandler handler = player.getCapability(Capabilities.ItemHandler.ENTITY, null);
 
         if (handler != null) {
-            scanHandler(handler, acceptor, visited);
+            scanHandler(handler, acceptor, visited, 0); // Start at depth 0
         } else {
-            // 2. Vanilla Fallback
-            scanList(player.getInventory().items, acceptor, visited);
-            scanList(player.getInventory().armor, acceptor, visited);
-            scanList(player.getInventory().offhand, acceptor, visited);
+            scanList(player.getInventory().items, acceptor, visited, 0);
+            scanList(player.getInventory().armor, acceptor, visited, 0);
+            scanList(player.getInventory().offhand, acceptor, visited, 0);
         }
     }
 
-    private void scanList(Iterable<ItemStack> list, Consumer<ItemStack> acceptor, Set<Object> visited) {
+    private void scanList(Iterable<ItemStack> list, Consumer<ItemStack> acceptor, Set<Object> visited, int depth) {
         for (ItemStack stack : list) {
-            processStack(stack, acceptor, visited);
+            processStack(stack, acceptor, visited, depth);
         }
     }
 
-    private void scanHandler(IItemHandler handler, Consumer<ItemStack> acceptor, Set<Object> visited) {
-        // If we've already seen this exact handler instance, abort to prevent cycles
+    private void scanHandler(IItemHandler handler, Consumer<ItemStack> acceptor, Set<Object> visited, int depth) {
+        if (depth > MAX_DEPTH) return; // Recursion Guard
         if (!visited.add(handler)) return;
 
         for (int i = 0; i < handler.getSlots(); i++) {
             ItemStack stack = handler.getStackInSlot(i);
-            processStack(stack, acceptor, visited);
+            processStack(stack, acceptor, visited, depth);
         }
     }
 
-    private void processStack(ItemStack stack, Consumer<ItemStack> acceptor, Set<Object> visited) {
+    private void processStack(ItemStack stack, Consumer<ItemStack> acceptor, Set<Object> visited, int depth) {
         if (stack.isEmpty()) return;
 
-        // 1. Collect the item itself
         acceptor.accept(stack.copy());
 
-        // 2. Check for nested inventory capability (Backpacks, etc.)
         IItemHandler internalCap = stack.getCapability(Capabilities.ItemHandler.ITEM, null);
         if (internalCap != null) {
-            scanHandler(internalCap, acceptor, visited);
+            scanHandler(internalCap, acceptor, visited, depth + 1); // Increment depth
         }
     }
 }

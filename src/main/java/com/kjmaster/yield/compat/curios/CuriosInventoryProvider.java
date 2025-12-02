@@ -13,6 +13,8 @@ import java.util.function.Consumer;
 
 public class CuriosInventoryProvider implements IInventoryProvider {
 
+    private static final int MAX_DEPTH = 8; // Safety limit to prevent StackOverflow
+
     @Override
     public void collect(Player player, Consumer<ItemStack> acceptor) {
         var curiosInvOpt = CuriosApi.getCuriosInventory(player);
@@ -22,10 +24,14 @@ public class CuriosInventoryProvider implements IInventoryProvider {
 
         // Use Identity Hash Set to prevent circular recursion logic
         Set<Object> visitedHandlers = new HashSet<>();
-        scanHandler(curiosHandler, acceptor, visitedHandlers);
+        // Start scanning at depth 0
+        scanHandler(curiosHandler, acceptor, visitedHandlers, 0);
     }
 
-    private void scanHandler(IItemHandler handler, Consumer<ItemStack> acceptor, Set<Object> visited) {
+    private void scanHandler(IItemHandler handler, Consumer<ItemStack> acceptor, Set<Object> visited, int depth) {
+        // Recursion Guard: Stop if we go too deep
+        if (depth > MAX_DEPTH) return;
+
         // If we've already seen this exact handler instance, abort to prevent cycles
         if (!visited.add(handler)) return;
 
@@ -39,7 +45,8 @@ public class CuriosInventoryProvider implements IInventoryProvider {
             // 2. Check for nested inventory capability (Backpacks, etc.)
             IItemHandler internalCap = stack.getCapability(Capabilities.ItemHandler.ITEM, null);
             if (internalCap != null) {
-                scanHandler(internalCap, acceptor, visited);
+                // Recursive call with incremented depth
+                scanHandler(internalCap, acceptor, visited, depth + 1);
             }
         }
     }

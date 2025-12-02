@@ -41,7 +41,9 @@ public class YieldOverlay implements LayeredDraw.Layer {
         boolean isPaused = !sessionStatus.isRunning();
 
         int width = 150;
-        int height = calculateHeight(project);
+
+        // 1. Calculate Full Height (No Limit)
+        int fullHeight = calculateHeight(project);
 
         int screenW = mc.getWindow().getGuiScaledWidth();
         int screenH = mc.getWindow().getGuiScaledHeight();
@@ -50,14 +52,21 @@ public class YieldOverlay implements LayeredDraw.Layer {
         int x = (int) (screenW * normX);
         int y = (int) (screenH * normY);
 
-        x = Mth.clamp(x, 0, screenW - width);
-        y = Mth.clamp(y, 0, screenH - height);
+        // 2. Cap Height to Screen Height
+        // This ensures the background box never exceeds the physical screen
+        int renderHeight = Math.min(fullHeight, screenH);
 
-        renderHud(gfx, mc.font, project, x, y, width, height, isPaused, projectProvider, sessionStatus);
+        // 3. Clamp Position Safely
+        // Math.max(0, ...) prevents negative bounds if renderHeight == screenH
+        x = Mth.clamp(x, 0, screenW - width);
+        y = Mth.clamp(y, 0, Math.max(0, screenH - renderHeight));
+
+        renderHud(gfx, mc.font, project, x, y, width, renderHeight, isPaused, projectProvider, sessionStatus);
     }
 
     public static int calculateHeight(YieldProject project) {
-        int goalCount = Math.min(project.goals().size(), 5);
+        // Calculate the height needed for ALL goals
+        int goalCount = project.goals().size();
         return Theme.PADDING + Theme.OVERLAY_LINE_HEIGHT + (goalCount * Theme.OVERLAY_LINE_HEIGHT) + Theme.PADDING
                 + (project.trackXp() ? Theme.OVERLAY_LINE_HEIGHT : 0);
     }
@@ -66,10 +75,12 @@ public class YieldOverlay implements LayeredDraw.Layer {
         int bgColor = Config.OVERLAY_COLOR.get();
         gfx.fill(x, y, x + width, y + height, bgColor);
 
+        // Define the hard bottom limit for rendering
+        int bottomLimit = y + height;
+
         // --- Header Row ---
         int currentY = y + Theme.PADDING;
 
-        // Save Failure Indicator
         if (projectProvider.hasSaveFailed()) {
             gfx.drawString(font, "!", x + width - 8, currentY + 4, 0xFFFF5555, true);
         }
@@ -77,7 +88,6 @@ public class YieldOverlay implements LayeredDraw.Layer {
         long durationSecs = sessionStatus.getSessionDuration() / 1000;
         String timeStr = String.format("%02d:%02d", durationSecs / 60, durationSecs % 60);
         int timeWidth = font.width(timeStr);
-        // Adjust time position if warning is present
         int rightMargin = projectProvider.hasSaveFailed() ? Theme.PADDING + 10 : Theme.PADDING;
 
         gfx.drawString(font, Component.literal(timeStr), x + width - rightMargin - timeWidth, currentY + 4, isPaused ? Theme.OVERLAY_TEXT_PAUSED : Theme.OVERLAY_DASH, true);
@@ -107,9 +117,18 @@ public class YieldOverlay implements LayeredDraw.Layer {
             currentY += Theme.OVERLAY_LINE_HEIGHT;
         }
 
-        int goalCount = Math.min(project.goals().size(), 5);
-        for (int i = 0; i < goalCount; i++) {
-            ProjectGoal goal = project.goals().get(i);
+        // 4. Render Goals with Overflow Check
+        for (ProjectGoal goal : project.goals()) {
+            // Check if adding this row would exceed the render area (minus padding)
+            if (currentY + Theme.OVERLAY_LINE_HEIGHT > bottomLimit - Theme.PADDING) {
+                // Determine center for overflow dots
+                int textW = font.width("...");
+                int dotX = x + (width - textW) / 2;
+                // Draw dots slightly above the bottom padding
+                gfx.drawString(font, "...", dotX, currentY - 4, Theme.TEXT_SECONDARY, false);
+                break; // Stop rendering
+            }
+
             renderGoalRow(gfx, font, goal, x + Theme.PADDING, currentY, width, isPaused, sessionStatus);
             currentY += Theme.OVERLAY_LINE_HEIGHT;
         }

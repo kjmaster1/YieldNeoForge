@@ -1,6 +1,6 @@
 package com.kjmaster.yield.client.screen;
 
-import com.kjmaster.yield.api.IProjectController;
+import com.kjmaster.yield.YieldServices;
 import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
@@ -21,20 +21,19 @@ public class GoalEditScreen extends Screen {
     private final YieldDashboardScreen parent;
     private final ProjectGoal goal;
     private final YieldProject projectContext;
-    private final IProjectController projectController;
+    private final YieldServices services;
 
     private EditBox amountInput;
     private Button strictButton;
     private boolean strictState;
     private LinearLayout layout;
 
-    public GoalEditScreen(YieldDashboardScreen parent, ProjectGoal goal, YieldProject projectContext, IProjectController projectController) {
+    public GoalEditScreen(YieldDashboardScreen parent, ProjectGoal goal, YieldProject projectContext, YieldServices services) {
         super(Component.translatable("yield.label.set_goal_amount"));
         this.parent = parent;
         this.goal = goal;
         this.projectContext = projectContext;
-        this.projectController = projectController;
-        // Record accessor
+        this.services = services;
         this.strictState = goal.strict();
     }
 
@@ -46,7 +45,6 @@ public class GoalEditScreen extends Screen {
         this.layout.addChild(new StringWidget(this.title, this.font));
 
         this.amountInput = new EditBox(this.font, 120, 20, Component.translatable("yield.label.amount"));
-        // Record accessor
         this.amountInput.setValue(String.valueOf(goal.targetAmount()));
         this.amountInput.setFilter(s -> s.matches("\\d*"));
         this.layout.addChild(this.amountInput);
@@ -113,8 +111,6 @@ public class GoalEditScreen extends Screen {
         try {
             int amount = Integer.parseInt(this.amountInput.getValue());
             int targetAmount = Math.max(1, amount);
-
-            // 1. Create updated Goal record (preserve ID and static properties)
             ProjectGoal updatedGoal = new ProjectGoal(
                     this.goal.id(),
                     this.goal.item(),
@@ -123,17 +119,10 @@ public class GoalEditScreen extends Screen {
                     this.goal.components(),
                     this.goal.targetTag()
             );
-
-            // 2. Create updated Project record containing the new goal
             YieldProject updatedProject = this.projectContext.updateGoal(updatedGoal);
-
             this.parent.updateUiState(updatedProject);
-
-            // 3. Persist the project update
-            this.projectController.updateProject(updatedProject);
-
-        } catch (NumberFormatException ignored) {
-        }
+            this.services.projectController().updateProject(updatedProject);
+        } catch (NumberFormatException ignored) {}
         onClose();
     }
 

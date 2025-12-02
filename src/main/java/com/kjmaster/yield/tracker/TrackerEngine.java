@@ -6,9 +6,12 @@ import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.service.InventoryScanner;
 import com.kjmaster.yield.time.GameTickSource;
 import com.kjmaster.yield.time.TimeSource;
+import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -18,6 +21,7 @@ import java.util.UUID;
 
 public class TrackerEngine {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private final TrackerState state;
     private final InventoryMonitor monitor;
     private final InventoryScanner scanner;
@@ -41,6 +45,7 @@ public class TrackerEngine {
     public TimeSource getTimeSource() { return timeSource; }
 
     public void reset() {
+        assertOnRenderThread();
         this.xpCalculator = new RateCalculator(Config.RATE_WINDOW.get(), timeSource);
         this.xpCalculator.clear();
         this.tickCounter = 0;
@@ -52,10 +57,13 @@ public class TrackerEngine {
     public double getXpRate() { return cachedXpRate; }
 
     public void addXp(int amount) {
+        assertOnRenderThread();
         if (xpCalculator != null) xpCalculator.addGain(amount);
     }
 
     public void onTick(Player player, YieldProject project) {
+        assertOnRenderThread(); // Validation Step
+
         if (xpCalculator == null) return;
 
         // 1. Sync Trackers (Handle Additions, Removals, and Modifications)
@@ -78,6 +86,14 @@ public class TrackerEngine {
         if (tickCounter >= 20) {
             tickCounter = 0;
             updateRates();
+        }
+    }
+
+    private void assertOnRenderThread() {
+        // Ensure we are strictly single-threaded
+        if (!Minecraft.getInstance().isSameThread()) {
+            LOGGER.error("Yield TrackerEngine accessed from wrong thread! Current: {}", Thread.currentThread().getName());
+            throw new IllegalStateException("TrackerEngine must only be accessed on the Main Client Thread.");
         }
     }
 
@@ -109,7 +125,6 @@ public class TrackerEngine {
         }
 
         // B. Remove Deleted Goals
-        // If a tracker exists in state but its ID is not in the current project, remove it.
         boolean removed = state.getTrackers().keySet().removeIf(uuid -> !activeGoalIds.contains(uuid));
         if (removed) {
             cacheRebuildNeeded = true;
@@ -122,7 +137,6 @@ public class TrackerEngine {
     }
 
     private boolean isStructuralChange(ProjectGoal g1, ProjectGoal g2) {
-        // Returns true if any property affecting the Scanner Map has changed
         return !g1.item().equals(g2.item()) ||
                 !g1.targetTag().equals(g2.targetTag()) ||
                 g1.strict() != g2.strict();

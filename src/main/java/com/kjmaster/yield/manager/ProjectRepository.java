@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ProjectRepository {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -36,7 +37,6 @@ public class ProjectRepository {
         try (FileReader reader = new FileReader(file)) {
             JsonElement json = GSON.fromJson(reader, JsonElement.class);
 
-            // Fix: Check for null if file is empty
             if (json != null) {
                 YieldProject.CODEC.listOf()
                         .parse(JsonOps.INSTANCE, json)
@@ -49,14 +49,24 @@ public class ProjectRepository {
         return projects;
     }
 
-    // Refactored: Accept file parameter to support "Capture-then-Write" (Race Condition Fix)
-    public void save(List<YieldProject> projects, File targetFile) {
+    /**
+     * Saves the projects list to disk.
+     * @return true if successful, false otherwise.
+     */
+    public boolean save(List<YieldProject> projects, File targetFile) {
         var result = YieldProject.CODEC.listOf().encodeStart(JsonOps.INSTANCE, projects);
+        AtomicBoolean success = new AtomicBoolean(true);
 
-        result.resultOrPartial(Yield.LOGGER::error).ifPresent(json -> {
+        result.resultOrPartial(err -> {
+            Yield.LOGGER.error("Serialization error: {}", err);
+            success.set(false);
+        }).ifPresent(json -> {
             try {
-                // Use passed targetFile instead of re-calculating (which might fail if world closed)
                 File tempFile = new File(targetFile.getParentFile(), FILE_NAME + ".tmp");
+                // Ensure parent exists
+                if (!tempFile.getParentFile().exists() && !tempFile.getParentFile().mkdirs()) {
+                    throw new IOException("Could not create directory: " + tempFile.getParent());
+                }
 
                 try (FileWriter writer = new FileWriter(tempFile)) {
                     GSON.toJson(json, writer);
@@ -71,11 +81,16 @@ public class ProjectRepository {
 
             } catch (IOException e) {
                 Yield.LOGGER.error("Could not save Yield projects", e);
+                success.set(false);
             }
         });
+
+        // If result was empty (encoding failed completely), success is effectively false,
+        // but the AtomicBoolean default was true. However, resultOrPartial handles logging.
+        // We need to check if result is present too.
+        return success.get() && result.result().isPresent();
     }
 
-    // Made public so ProjectManager can capture the path synchronously
     public File getStorageFile() {
         Minecraft mc = Minecraft.getInstance();
         String folderName;

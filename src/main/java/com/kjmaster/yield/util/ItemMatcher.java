@@ -17,12 +17,13 @@ public class ItemMatcher {
         if (source.isEmpty()) return false;
 
         // 1. Tag Mode: Checks if item belongs to the configured Tag
-        // Check this first as it encompasses multiple Item Types
+        // Check this first as it implies a different matching logic
         if (goal.targetTag().isPresent()) {
             return source.is(goal.targetTag().get());
         }
 
-        // 2. Base Item Check (Required for both Fuzzy and Strict)
+        // 2. Base Item Check (Identity)
+        // Using == is safe for singleton Items and faster than implicit equals()
         if (source.getItem() != goal.item()) {
             return false;
         }
@@ -40,11 +41,10 @@ public class ItemMatcher {
      * Compares components of two stacks but ignores the DAMAGE (Durability) component.
      */
     private static boolean areComponentsEqualIgnoringDamage(ItemStack a, ItemStack b) {
-        // If exact match (including damage), return true immediately (Fast path)
+        // Fast path: Exact reference or full value equality
         if (ItemStack.isSameItemSameComponents(a, b)) return true;
 
-        // Iterate over components of A and check against B
-        // Note: This is a bidirectional check to ensure B doesn't have extra components A lacks
+        // Detailed component scan
         return checkContains(a, b) && checkContains(b, a);
     }
 
@@ -55,9 +55,10 @@ public class ItemMatcher {
             // IGNORE Durability/Damage
             if (type == DataComponents.DAMAGE) continue;
 
-            // Check if B has this component and if values are equal
+            // Check if B has this component
             if (!stackB.has(type)) return false;
 
+            // Value equality
             Object valueA = component.value();
             Object valueB = stackB.get(type);
 

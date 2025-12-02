@@ -12,14 +12,17 @@ public class InventoryMonitor {
     private final Set<Item> dirtyItems = new HashSet<>();
     private int lastInventoryVersion = -1;
 
-    // Renamed to markAllDirty for clarity and consistency with the refactor plan
     public void markAllDirty() {
         this.allDirty = true;
+        // If everything is dirty, we don't need to track specifics
+        this.dirtyItems.clear();
     }
 
-    // New method to mark a single item as dirty
     public void markItemDirty(Item item) {
-        this.dirtyItems.add(item);
+        // If we are already doing a full scan, ignore granular updates
+        if (!allDirty) {
+            this.dirtyItems.add(item);
+        }
     }
 
     public boolean isAllDirty() {
@@ -30,17 +33,20 @@ public class InventoryMonitor {
         return dirtyItems;
     }
 
-    // Renamed to clearAllDirty for consistency
     public void clearAllDirty() {
         allDirty = false;
         dirtyItems.clear();
     }
 
     public void checkForNativeChanges(Player player) {
-        if (player.getInventory().getTimesChanged() != lastInventoryVersion) {
+        // Minecraft's inventory revision counter increments on ANY change.
+        // If this mismatches, we must assume a full scan is needed because
+        // we don't know *what* changed (could be a swap, a move, etc that events didn't catch).
+        int currentVersion = player.getInventory().getTimesChanged();
+        if (currentVersion != lastInventoryVersion) {
             this.allDirty = true;
-            lastInventoryVersion = player.getInventory().getTimesChanged();
+            this.dirtyItems.clear(); // Optimization: clear granular set
+            lastInventoryVersion = currentVersion;
         }
     }
-
 }

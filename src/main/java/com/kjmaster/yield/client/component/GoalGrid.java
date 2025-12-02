@@ -1,19 +1,14 @@
 package com.kjmaster.yield.client.component;
 
-import com.kjmaster.yield.api.ISessionStatus;
+import com.kjmaster.yield.YieldServices;
 import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.tracker.GoalTracker;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Renderable;
-import net.minecraft.client.gui.components.events.GuiEventListener;
-import net.minecraft.client.gui.layouts.GridLayout;
-import net.minecraft.client.gui.narration.NarratableEntry;
-import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import org.jetbrains.annotations.NotNull;
@@ -22,148 +17,117 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-public class GoalGrid implements Renderable, GuiEventListener, NarratableEntry {
+public class GoalGrid extends ObjectSelectionList<GoalGrid.GoalRow> {
 
-    private final Minecraft minecraft;
-    private final Font font;
-    private final ISessionStatus sessionStatus;
-
-    // Use Native GridLayout to manage positions
-    private final GridLayout layoutGrid;
-
+    private final YieldServices services;
     private YieldProject currentProject;
-    private ProjectGoal hoveredGoal;
-    private int x, y, width, height;
     private BiConsumer<ProjectGoal, Boolean> onGoalClicked;
 
-    public GoalGrid(ISessionStatus session) {
-        this.minecraft = Minecraft.getInstance();
-        this.font = minecraft.font;
-        this.sessionStatus = session;
-        this.layoutGrid = new GridLayout();
-        this.layoutGrid.spacing(Theme.GOAL_SLOT_GAP);
+    private final int slotSize = Theme.GOAL_SLOT_SIZE;
+    private final int gap = Theme.GOAL_SLOT_GAP;
+    private int columns = 1;
+
+    public GoalGrid(Minecraft mc, int width, int height, int top, int bottom, YieldServices services) {
+        super(mc, width, height, top, Theme.GOAL_SLOT_SIZE + Theme.GOAL_SLOT_GAP);
+        this.services = services;
+    }
+
+    /**
+     * Updates the size of the grid view.
+     * Maps to updateSizeAndPosition in AbstractSelectionList.
+     * Called manually by the Screen during resize events.
+     */
+    public void setFixedSize(int width, int height) {
+        this.updateSizeAndPosition(width, height, this.getY());
+    }
+
+    /**
+     * Override to allow Right-Clicking (Button 1).
+     * By default, AbstractSelectionList only accepts Button 0 (Left Click).
+     */
+    @Override
+    protected boolean isValidMouseClick(int button) {
+        return button == 0 || button == 1;
     }
 
     public void setProject(YieldProject project) {
         this.currentProject = project;
-        recalculateLayout();
+        reflow();
     }
 
     public void setOnGoalClicked(BiConsumer<ProjectGoal, Boolean> listener) {
         this.onGoalClicked = listener;
     }
 
-    public void layout(int x, int y, int width, int height) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-        recalculateLayout();
-    }
-
-    public void recalculateLayout() {
+    public void reflow() {
+        this.clearEntries();
         if (currentProject == null) return;
 
-        // Clear logic would go here if we were holding widgets
-        // Recalculate grid dimensions
-        // With native GridLayout, we typically add widgets.
-        // Since we are rendering manually, we use it to calculate X/Y.
+        int availableWidth = getRowWidth();
+        this.columns = Math.max(1, availableWidth / (slotSize + gap));
 
-        // Reset grid
-        this.layoutGrid.setX(x);
-        this.layoutGrid.setY(y);
-        // We don't actually add children because we want to render manually for now
-        // to keep the "lightweight" item rendering vs full widget overhead.
-        // However, we can simulate the math:
-        // Col count = width / (size + gap)
+        List<ProjectGoal> goals = currentProject.goals();
+        List<ProjectGoal> currentRowGoals = new ArrayList<>();
+
+        for (ProjectGoal goal : goals) {
+            currentRowGoals.add(goal);
+            if (currentRowGoals.size() >= columns) {
+                this.addEntry(new GoalRow(new ArrayList<>(currentRowGoals)));
+                currentRowGoals.clear();
+            }
+        }
+
+        if (!currentRowGoals.isEmpty()) {
+            this.addEntry(new GoalRow(new ArrayList<>(currentRowGoals)));
+        }
+        this.setScrollAmount(0);
     }
 
     @Override
-    public void render(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
-        this.hoveredGoal = null;
+    public int getRowWidth() {
+        return this.width - 20;
+    }
+
+    @Override
+    protected int getScrollbarPosition() {
+        return this.width - 6;
+    }
+
+    @Override
+    protected void renderListBackground(@NotNull GuiGraphics g) {
+    }
+
+    @Override
+    public void renderWidget(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
         if (currentProject == null) {
             renderPlaceholder(gfx, "yield.label.select_prompt");
             return;
         }
-        List<ProjectGoal> goals = currentProject.goals();
-        if (goals.isEmpty()) {
+        if (currentProject.goals().isEmpty()) {
             renderPlaceholder(gfx, "yield.label.goals_empty");
             return;
         }
-
-        gfx.drawString(this.font, Component.translatable("yield.label.goals"), x, y - 12, Theme.TEXT_PRIMARY, false);
-        gfx.enableScissor(x, y, x + width, y + height);
-
-        // Manual Grid Logic using Theme constants (Simple and efficient)
-        int slotSize = Theme.GOAL_SLOT_SIZE;
-        int gap = Theme.GOAL_SLOT_GAP;
-        int cols = Math.max(1, width / (slotSize + gap));
-
-        for (int i = 0; i < goals.size(); i++) {
-            ProjectGoal goal = goals.get(i);
-
-            int col = i % cols;
-            int row = i / cols;
-
-            int drawX = x + col * (slotSize + gap);
-            int drawY = y + row * (slotSize + gap);
-
-            // Check visibility (Vertical Scroll clipping)
-            if (drawY + slotSize > y + height) break;
-
-            renderGoalSlot(gfx, goal, drawX, drawY, slotSize, mouseX, mouseY);
+        super.renderWidget(gfx, mouseX, mouseY, partialTick);
+        GoalRow hoveredRow = getHovered();
+        if (hoveredRow != null && hoveredRow.hoveredGoal != null) {
+            renderSmartTooltip(gfx, mouseX, mouseY, hoveredRow.hoveredGoal);
         }
-
-        gfx.disableScissor();
-
-        if (this.hoveredGoal != null) {
-            renderSmartTooltip(gfx, mouseX, mouseY, this.hoveredGoal);
-        }
-    }
-
-    private void renderGoalSlot(GuiGraphics gfx, ProjectGoal goal, int rx, int ry, int size, int mouseX, int mouseY) {
-        boolean isHovered = mouseX >= rx && mouseX < rx + size && mouseY >= ry && mouseY < ry + size;
-        int bgColor = isHovered ? Theme.GRID_ITEM_HOVER : Theme.GRID_ITEM_BG;
-        gfx.fill(rx, ry, rx + size, ry + size, bgColor);
-
-        GoalTracker tracker = sessionStatus.getTracker(goal);
-        float progress = tracker.getProgress();
-
-        if (progress > 0) {
-            gfx.pose().pushPose();
-            gfx.pose().translate(0, 0, 200);
-            int borderColor;
-            if (progress >= 1.0f) borderColor = 0xFFFFD700;
-            else if (progress > 0.75f) borderColor = 0xFF55FF55;
-            else if (progress > 0.25f) borderColor = 0xFFFFFF55;
-            else borderColor = 0xFFFF5555;
-
-            int maxBarW = 16;
-            int barWidth = (int) (maxBarW * progress);
-            int barY = ry + 16;
-            gfx.fill(rx + 1, barY, rx + 1 + maxBarW, barY + 1, 0xFF000000);
-            gfx.fill(rx + 1, barY, rx + 1 + barWidth, barY + 1, borderColor);
-            gfx.pose().popPose();
-        }
-
-        gfx.renderItem(goal.getRenderStack(), rx + 1, ry + 1);
-        if (isHovered) this.hoveredGoal = goal;
     }
 
     private void renderPlaceholder(GuiGraphics gfx, String key) {
         Component helpText = Component.translatable(key);
-        List<FormattedCharSequence> lines = this.font.split(helpText, Math.max(50, width));
-        int totalTextHeight = lines.size() * this.font.lineHeight;
-        int startY = y + (height - totalTextHeight) / 2;
-        int centerX = x + width / 2;
+        List<FormattedCharSequence> lines = this.minecraft.font.split(helpText, Math.max(50, width - 20));
+        int totalTextHeight = lines.size() * this.minecraft.font.lineHeight;
+        int startY = this.getY() + (this.getHeight() - totalTextHeight) / 2;
+        int centerX = this.getX() + this.getWidth() / 2;
         for (FormattedCharSequence line : lines) {
-            gfx.drawCenteredString(this.font, line, centerX, startY, 0xFF606060);
-            startY += this.font.lineHeight;
+            gfx.drawCenteredString(this.minecraft.font, line, centerX, startY, 0xFF606060);
+            startY += this.minecraft.font.lineHeight;
         }
     }
 
     private void renderSmartTooltip(GuiGraphics gfx, int mouseX, int mouseY, ProjectGoal goal) {
-        GoalTracker tracker = sessionStatus.getTracker(goal);
+        GoalTracker tracker = services.sessionStatus().getTracker(goal);
         List<Component> tooltip = new ArrayList<>();
         if (goal.targetTag().isPresent()) {
             tooltip.add(Component.literal(goal.targetTag().get().location().toString()).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
@@ -186,36 +150,65 @@ public class GoalGrid implements Renderable, GuiEventListener, NarratableEntry {
         } else if (tracker.getCurrentCount() >= goal.targetAmount()) {
             tooltip.add(Component.translatable("yield.tooltip.complete").withStyle(ChatFormatting.GOLD));
         }
-        gfx.renderComponentTooltip(this.font, tooltip, mouseX, mouseY);
+        gfx.renderComponentTooltip(this.minecraft.font, tooltip, mouseX, mouseY);
     }
 
-    @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (currentProject == null) return false;
+    public class GoalRow extends ObjectSelectionList.Entry<GoalRow> {
+        private final List<ProjectGoal> rowGoals;
+        public ProjectGoal hoveredGoal;
 
-        int slotSize = Theme.GOAL_SLOT_SIZE;
-        int gap = Theme.GOAL_SLOT_GAP;
-        int cols = Math.max(1, width / (slotSize + gap));
+        public GoalRow(List<ProjectGoal> rowGoals) {
+            this.rowGoals = rowGoals;
+        }
 
-        // Manual Hit Test (matching render logic)
-        for (int i = 0; i < currentProject.goals().size(); i++) {
-            int col = i % cols;
-            int row = i / cols;
-            int drawX = x + col * (slotSize + gap);
-            int drawY = y + row * (slotSize + gap);
+        @Override
+        public @NotNull Component getNarration() {
+            return Component.translatable("yield.label.goals");
+        }
 
-            if (mouseX >= drawX && mouseX < drawX + slotSize && mouseY >= drawY && mouseY < drawY + slotSize) {
-                ProjectGoal goal = currentProject.goals().get(i);
-                if (onGoalClicked != null) {
-                    onGoalClicked.accept(goal, button == 1);
-                    return true;
-                }
+        @Override
+        public void render(@NotNull GuiGraphics gfx, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean isHovered, float partialTick) {
+            this.hoveredGoal = null;
+            for (int i = 0; i < rowGoals.size(); i++) {
+                ProjectGoal goal = rowGoals.get(i);
+                int x = left + (i * (slotSize + gap));
+                int y = top;
+                boolean slotHover = mouseX >= x && mouseX < x + slotSize && mouseY >= y && mouseY < y + slotSize;
+                if (slotHover) this.hoveredGoal = goal;
+                renderGoalSlot(gfx, goal, x, y, slotHover);
             }
         }
-        return false;
-    }
 
-    @Override public void setFocused(boolean focused) {}
-    @Override public boolean isFocused() { return false; }
-    @Override public @NotNull NarrationPriority narrationPriority() { return NarrationPriority.NONE; }
-    @Override public void updateNarration(@NotNull NarrationElementOutput narrationElementOutput) {}
+        private void renderGoalSlot(GuiGraphics gfx, ProjectGoal goal, int x, int y, boolean isHovered) {
+            int bgColor = isHovered ? Theme.GRID_ITEM_HOVER : Theme.GRID_ITEM_BG;
+            gfx.fill(x, y, x + slotSize, y + slotSize, bgColor);
+            GoalTracker tracker = services.sessionStatus().getTracker(goal);
+            float progress = tracker.getProgress();
+            if (progress > 0) {
+                gfx.pose().pushPose();
+                gfx.pose().translate(0, 0, 100);
+                int borderColor;
+                if (progress >= 1.0f) borderColor = 0xFFFFD700;
+                else if (progress > 0.75f) borderColor = 0xFF55FF55;
+                else if (progress > 0.25f) borderColor = 0xFFFFFF55;
+                else borderColor = 0xFFFF5555;
+                int maxBarW = 16;
+                int barWidth = (int) (maxBarW * progress);
+                int barY = y + 16;
+                gfx.fill(x + 1, barY, x + 1 + maxBarW, barY + 1, 0xFF000000);
+                gfx.fill(x + 1, barY, x + 1 + barWidth, barY + 1, borderColor);
+                gfx.pose().popPose();
+            }
+            gfx.renderItem(goal.getRenderStack(), x + 1, y + 1);
+        }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            if (this.hoveredGoal != null && onGoalClicked != null) {
+                onGoalClicked.accept(this.hoveredGoal, button == 1);
+                return true;
+            }
+            return false;
+        }
+    }
 }

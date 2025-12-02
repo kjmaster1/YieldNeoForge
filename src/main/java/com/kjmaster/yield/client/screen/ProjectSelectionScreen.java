@@ -1,8 +1,6 @@
 package com.kjmaster.yield.client.screen;
 
-import com.kjmaster.yield.api.IProjectController;
-import com.kjmaster.yield.api.IProjectProvider;
-import com.kjmaster.yield.api.ISessionController;
+import com.kjmaster.yield.YieldServices;
 import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
@@ -25,11 +23,7 @@ public class ProjectSelectionScreen extends Screen {
 
     private final Screen parent;
     private final ItemStack stackToTrack;
-
-    private final IProjectProvider projectProvider;
-    private final IProjectController projectController;
-    private final ISessionController sessionController;
-
+    private final YieldServices services;
     private final List<YieldProject> projects;
 
     private int currentPage = 0;
@@ -37,15 +31,12 @@ public class ProjectSelectionScreen extends Screen {
 
     private int layoutX, layoutY, layoutWidth, layoutHeight;
 
-    public ProjectSelectionScreen(Screen parent, ItemStack stackToTrack, IProjectProvider projectProvider, IProjectController projectController, ISessionController sessionController) {
+    public ProjectSelectionScreen(Screen parent, ItemStack stackToTrack, YieldServices services) {
         super(Component.translatable("yield.title.select_project"));
         this.parent = parent;
         this.stackToTrack = stackToTrack;
-        this.projectProvider = projectProvider;
-        this.projectController = projectController;
-        this.sessionController = sessionController;
-
-        this.projects = projectProvider.getProjects();
+        this.services = services;
+        this.projects = services.projectProvider().getProjects();
     }
 
     @Override
@@ -111,11 +102,9 @@ public class ProjectSelectionScreen extends Screen {
 
     private void selectProject(YieldProject project) {
         YieldProject updated = project.addGoal(ProjectGoal.fromStack(stackToTrack, stackToTrack.getCount()));
-        projectController.updateProject(updated);
-
-        projectController.setActiveProject(updated);
-        sessionController.startSession();
-
+        services.projectController().updateProject(updated);
+        services.projectController().setActiveProject(updated);
+        services.sessionController().startSession();
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
         onClose();
     }

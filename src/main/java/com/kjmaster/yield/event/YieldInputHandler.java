@@ -1,10 +1,7 @@
 package com.kjmaster.yield.event;
 
 import com.kjmaster.yield.Config;
-import com.kjmaster.yield.api.IProjectController;
-import com.kjmaster.yield.api.IProjectProvider;
-import com.kjmaster.yield.api.ISessionController;
-import com.kjmaster.yield.api.ISessionStatus;
+import com.kjmaster.yield.YieldServices;
 import com.kjmaster.yield.client.KeyBindings;
 import com.kjmaster.yield.client.screen.ProjectSelectionScreen;
 import com.kjmaster.yield.client.screen.YieldDashboardScreen;
@@ -19,30 +16,19 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
-import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.Optional;
 
-public class ClientGameEvents {
+public class YieldInputHandler {
 
-    private boolean pendingLoad = false;
+    private final YieldServices services;
 
-    private final IProjectProvider projectProvider;
-    private final IProjectController projectController;
-    private final ISessionStatus sessionStatus;
-    private final ISessionController sessionController;
-
-    public ClientGameEvents(IProjectProvider projectProvider, IProjectController projectController, ISessionStatus sessionStatus, ISessionController sessionController) {
-        this.projectProvider = projectProvider;
-        this.projectController = projectController;
-        this.sessionStatus = sessionStatus;
-        this.sessionController = sessionController;
+    public YieldInputHandler(YieldServices services) {
+        this.services = services;
     }
 
     @SubscribeEvent
@@ -51,43 +37,17 @@ public class ClientGameEvents {
         if (mc.player == null || mc.level == null) return;
 
         while (KeyBindings.OPEN_DASHBOARD.consumeClick()) {
-            if (mc.screen == null) mc.setScreen(new YieldDashboardScreen(projectProvider, projectController, sessionStatus, sessionController));
-            else if (mc.screen instanceof YieldDashboardScreen) mc.setScreen(null);
+            if (mc.screen == null) {
+                mc.setScreen(new YieldDashboardScreen(services));
+            } else if (mc.screen instanceof YieldDashboardScreen) {
+                mc.setScreen(null);
+            }
         }
 
         while (KeyBindings.TOGGLE_OVERLAY.consumeClick()) {
             boolean newState = !Config.OVERLAY_ENABLED.get();
             Config.OVERLAY_ENABLED.set(newState);
             Config.SPEC.save();
-        }
-    }
-
-    @SubscribeEvent
-    public void onPlayerLogin(ClientPlayerNetworkEvent.LoggingIn event) {
-        pendingLoad = true;
-        sessionController.stopSession();
-    }
-
-    @SubscribeEvent
-    public void onEntityJoinLevel(EntityJoinLevelEvent event) {
-        if (pendingLoad && event.getEntity() == Minecraft.getInstance().player) {
-            projectController.load();
-            pendingLoad = false;
-        }
-    }
-
-    @SubscribeEvent
-    public void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
-        projectController.save();
-        projectController.clear();
-        sessionController.stopSession();
-        pendingLoad = false;
-    }
-
-    @SubscribeEvent
-    public void onXpChange(PlayerXpEvent.XpChange event) {
-        if (event.getEntity() == Minecraft.getInstance().player) {
-            sessionController.addXpGain(event.getAmount());
         }
     }
 
@@ -110,33 +70,31 @@ public class ClientGameEvents {
     }
 
     private void handleQuickTrack(Minecraft mc, ItemStack stack) {
-        Optional<YieldProject> activeOpt = projectProvider.getActiveProject();
+        Optional<YieldProject> activeOpt = services.projectProvider().getActiveProject();
 
-        if (activeOpt.isPresent() && sessionStatus.isRunning()) {
+        if (activeOpt.isPresent() && services.sessionStatus().isRunning()) {
             addToProject(activeOpt.get(), stack);
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
             return;
         }
 
-        List<YieldProject> allProjects = projectProvider.getProjects();
+        List<YieldProject> allProjects = services.projectProvider().getProjects();
         if (allProjects.isEmpty()) {
-            projectController.createProject("New Project");
-            YieldProject newP = projectProvider.getProjects().getLast();
-
-            projectController.setActiveProject(newP);
+            services.projectController().createProject("New Project");
+            YieldProject newP = services.projectProvider().getProjects().getLast();
+            services.projectController().setActiveProject(newP);
             addToProject(newP, stack);
-
-            sessionController.startSession();
+            services.sessionController().startSession();
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
         } else {
-            mc.setScreen(new ProjectSelectionScreen(mc.screen, stack, projectProvider, projectController, sessionController));
+            mc.setScreen(new ProjectSelectionScreen(mc.screen, stack, services));
         }
     }
 
     private void addToProject(YieldProject project, ItemStack stack) {
         ProjectGoal goal = ProjectGoal.fromStack(stack, stack.getCount());
         YieldProject updated = project.addGoal(goal);
-        projectController.updateProject(updated);
+        services.projectController().updateProject(updated);
     }
 
     private boolean isRawDown(KeyMapping mapping) {

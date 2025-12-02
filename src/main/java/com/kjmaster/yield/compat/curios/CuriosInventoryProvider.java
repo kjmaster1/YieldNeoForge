@@ -15,27 +15,35 @@ import java.util.Map;
 
 public class CuriosInventoryProvider implements IInventoryProvider {
 
+    // Limit recursion to avoid lag spikes with nested backpacks
+    private static final int MAX_DEPTH = 2;
+
     @Override
     public void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, Item targetItemFilter) {
         var curiosInvOpt = CuriosApi.getCuriosInventory(player);
         if (curiosInvOpt.isEmpty()) return;
 
         var curiosHandler = curiosInvOpt.get().getEquippedCurios();
-        for (int i = 0; i < curiosHandler.getSlots(); i++) {
-            ItemStack stack = curiosHandler.getStackInSlot(i);
+
+        scanHandler(curiosHandler, itemTrackers, targetItemFilter, 0);
+    }
+
+    private void scanHandler(IItemHandler handler, Map<Item, List<GoalTracker>> itemTrackers, Item targetItemFilter, int currentDepth) {
+        if (currentDepth > MAX_DEPTH) return;
+
+        for (int i = 0; i < handler.getSlots(); i++) {
+            ItemStack stack = handler.getStackInSlot(i);
             if (stack.isEmpty()) continue;
 
-            // 1. Check the Curio itself
+            // 1. Scan the item itself
             ScannerHelper.checkAndIncrement(stack, itemTrackers, targetItemFilter);
 
-            // 2. Check INSIDE the Curio (e.g. Backpacks/Satchels)
-            IItemHandler internalCap = stack.getCapability(Capabilities.ItemHandler.ITEM, null);
-            if (internalCap != null) {
-                for (int j = 0; j < internalCap.getSlots(); j++) {
-                    ItemStack internalStack = internalCap.getStackInSlot(j);
-                    if (!internalStack.isEmpty()) {
-                        ScannerHelper.checkAndIncrement(internalStack, itemTrackers, targetItemFilter);
-                    }
+            // 2. Check for nested inventory capability (Backpacks, etc.)
+            // Only proceed if we haven't hit the depth limit
+            if (currentDepth < MAX_DEPTH) {
+                IItemHandler internalCap = stack.getCapability(Capabilities.ItemHandler.ITEM, null);
+                if (internalCap != null) {
+                    scanHandler(internalCap, itemTrackers, targetItemFilter, currentDepth + 1);
                 }
             }
         }

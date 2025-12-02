@@ -6,7 +6,7 @@ import java.util.concurrent.*;
 public class Debouncer {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "Yield-Debouncer");
-        t.setDaemon(false); // Changed to false so it can finish tasks on shutdown if needed
+        t.setDaemon(false);
         return t;
     });
 
@@ -14,14 +14,7 @@ public class Debouncer {
     private Runnable lastTask;
 
     public Debouncer() {
-        // Ensure pending saves are written if the game closes unexpectedly
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            if (lastTask != null) {
-                Yield.LOGGER.info("Yield is shutting down, forcing pending save...");
-                lastTask.run();
-            }
-            scheduler.shutdownNow();
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(this::onShutdown));
     }
 
     public synchronized void debounce(Runnable task, long delay, TimeUnit unit) {
@@ -34,10 +27,42 @@ public class Debouncer {
                 task.run();
             } finally {
                 synchronized (this) {
-                    lastTask = null; // Clear task after execution
+                    // Only clear if this specific task finished (simple check)
+                    if (this.lastTask == task) {
+                        this.lastTask = null;
+                    }
                 }
             }
         }, delay, unit);
+    }
+
+    private void onShutdown() {
+        // Run pending task immediately on the shutdown thread
+        Runnable pending;
+        synchronized (this) {
+            pending = lastTask;
+            lastTask = null; // Prevent double execution
+        }
+
+        if (pending != null) {
+            Yield.LOGGER.info("Yield is shutting down, forcing pending save...");
+            try {
+                pending.run();
+            } catch (Exception e) {
+                Yield.LOGGER.error("Failed to execute pending save on shutdown", e);
+            }
+        }
+
+        scheduler.shutdown();
+        try {
+            if (!scheduler.awaitTermination(2, TimeUnit.SECONDS)) {
+                Yield.LOGGER.warn("Yield Debouncer did not terminate in time, forcing shutdown.");
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     public void shutdown() {

@@ -18,4 +18,10 @@ public interface IProjectProvider {
      * @return A list of YieldProject.
      */
     List<YieldProject> getProjects();
+
+    /**
+     * Checks if the last save attempt failed.
+     * @return true if persistence is failing.
+     */
+    boolean hasSaveFailed();
 }

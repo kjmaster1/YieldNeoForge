@@ -1,11 +1,10 @@
 package com.kjmaster.yield;
 
 import com.kjmaster.yield.client.YieldOverlay;
-import com.kjmaster.yield.event.ClientGameEvents;
-import com.kjmaster.yield.event.YieldNeoForgeEventHandler;
+import com.kjmaster.yield.event.YieldInputHandler;
+import com.kjmaster.yield.event.YieldLogicHandler;
 import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.manager.ProjectRepository;
-import com.kjmaster.yield.tracker.InventoryMonitor;
 import com.kjmaster.yield.tracker.SessionTracker;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
@@ -24,23 +23,23 @@ public class Yield {
     public static final String MODID = "yield";
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    // Singleton instance for integrations (JEI) that cannot use DI
     private static Yield instance;
 
-    // Core Services
-    private final ProjectManager projectManager;
-    private final SessionTracker sessionTracker;
+    // Service Registry
+    private final YieldServices services;
 
     public Yield(IEventBus modEventBus, ModContainer modContainer) {
         instance = this;
 
         modContainer.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
 
-        // 1. Instantiate Persistence & Core Services IMMEDIATELY
-        // Moving this to the constructor guarantees they exist before ANY event fires.
+        // 1. Instantiate Core Services
         ProjectRepository repository = new ProjectRepository();
-        this.projectManager = new ProjectManager(repository);
-        this.sessionTracker = new SessionTracker(projectManager);
+        ProjectManager projectManager = new ProjectManager(repository);
+        SessionTracker sessionTracker = new SessionTracker(projectManager);
+
+        // 2. Wrap in Registry
+        this.services = new YieldServices(projectManager, sessionTracker);
 
         // Register Lifecycle Events
         modEventBus.addListener(this::onClientSetup);
@@ -48,22 +47,15 @@ public class Yield {
     }
 
     private void onClientSetup(final FMLClientSetupEvent event) {
-        // 2. Logic Components (Retrieving parts from the already-instantiated tracker)
-        InventoryMonitor monitor = sessionTracker.getMonitor();
+        // 3. wire Handlers using the Registry
+        YieldLogicHandler logicHandler = new YieldLogicHandler(services);
+        YieldInputHandler inputHandler = new YieldInputHandler(services);
 
-        // 3. Event Handlers (The Bridge)
-        // Wire up the handlers that listen to the in-game NeoForge bus
-        YieldNeoForgeEventHandler forgeEventHandler = new YieldNeoForgeEventHandler(sessionTracker, monitor);
-        ClientGameEvents gameInputHandler = new ClientGameEvents(projectManager, projectManager, sessionTracker, sessionTracker);
+        NeoForge.EVENT_BUS.register(logicHandler);
+        NeoForge.EVENT_BUS.register(inputHandler);
 
-        // 4. Register to NeoForge Event Bus
-        // This is safe to do here as we are setting up client-side game logic
-        NeoForge.EVENT_BUS.register(forgeEventHandler);
-        NeoForge.EVENT_BUS.register(gameInputHandler);
-
-        // 5. Initial Data Load
-        // Load data from disk now that the game is setting up
-        projectManager.load();
+        // 4. Initial Data Load
+        services.projectManager().load();
 
         LOGGER.info("Yield Services Initialized and Wired.");
     }
@@ -72,19 +64,20 @@ public class Yield {
         event.registerAbove(
                 VanillaGuiLayers.EFFECTS,
                 ResourceLocation.fromNamespaceAndPath(Yield.MODID, "yield_hud"),
-                new YieldOverlay(projectManager, sessionTracker)
+                new YieldOverlay(services)
         );
     }
 
-    /**
-     * Static accessor strictly for external integrations (e.g., JEI)
-     * that do not support constructor injection.
-     */
     public static Yield getInstance() {
         return instance;
     }
 
+    public YieldServices getServices() {
+        return services;
+    }
+
+    // Legacy accessor for JEI Plugin if needed, or update JEI plugin to use getServices()
     public ProjectManager getProjectManager() {
-        return projectManager;
+        return services.projectManager();
     }
 }

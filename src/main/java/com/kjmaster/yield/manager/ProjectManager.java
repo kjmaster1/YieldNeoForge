@@ -7,6 +7,7 @@ import com.kjmaster.yield.util.Debouncer;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -18,6 +19,9 @@ public class ProjectManager implements IProjectProvider, IProjectController {
 
     private final List<YieldProject> projects = new ArrayList<>();
     private YieldProject activeProject;
+
+    // Volatile to ensure visibility across threads (Debouncer -> Render Thread)
+    private volatile boolean saveFailed = false;
 
     public ProjectManager(ProjectRepository repository) {
         this.repository = repository;
@@ -66,23 +70,30 @@ public class ProjectManager implements IProjectProvider, IProjectController {
 
     @Override
     public List<YieldProject> getProjects() {
-        return projects;
+        return Collections.unmodifiableList(projects);
+    }
+
+    @Override
+    public boolean hasSaveFailed() {
+        return saveFailed;
     }
 
     @Override
     public void clear() {
         this.projects.clear();
         this.activeProject = null;
+        this.saveFailed = false;
     }
 
     @Override
     public void save() {
+        // Snapshot logic
         List<YieldProject> snapshot = new ArrayList<>(this.projects);
-
         File file = repository.getStorageFile();
 
         debouncer.debounce(() -> {
-            repository.save(snapshot, file);
+            boolean success = repository.save(snapshot, file);
+            this.saveFailed = !success;
         }, 2, TimeUnit.SECONDS);
     }
 
@@ -90,6 +101,7 @@ public class ProjectManager implements IProjectProvider, IProjectController {
     public void load() {
         this.projects.clear();
         this.activeProject = null;
+        this.saveFailed = false;
         List<YieldProject> loaded = repository.load();
         this.projects.addAll(loaded);
     }

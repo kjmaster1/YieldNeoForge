@@ -1,57 +1,45 @@
 package com.kjmaster.yield.client.component;
 
-import com.kjmaster.yield.api.IProjectController;
-import com.kjmaster.yield.api.IProjectProvider;
-import com.kjmaster.yield.api.ISessionStatus;
+import com.kjmaster.yield.YieldServices;
 import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.project.YieldProject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.Renderable;
-import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.layouts.LinearLayout;
-import net.minecraft.client.gui.narration.NarratableEntry;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
 import java.util.function.Consumer;
 
-public class DashboardHeader implements Renderable, GuiEventListener, NarratableEntry {
+public class DashboardHeader extends AbstractWidget {
 
     private final Minecraft minecraft;
     private final Font font;
-    private final IProjectController projectController;
-    private final ISessionStatus sessionStatus;
-    private final IProjectProvider projectProvider;
-
-    private int x, y, width, height;
+    private final YieldServices services;
 
     private EditBox nameInput;
     private Button startStopButton;
     private Button addGoalButton;
     private Button deleteButton;
-
-    private LinearLayout rootLayout;
+    private final LinearLayout buttonRow;
 
     private YieldProject currentProject;
     private Runnable onAddGoalClicked;
     private Runnable onDeleteProjectClicked;
     private Runnable onStartStopClicked;
-
-    // NEW: Callback for name updates
     private Consumer<YieldProject> onProjectNameUpdated;
 
-    public DashboardHeader(IProjectProvider projectProvider, IProjectController projectController, ISessionStatus sessionStatus) {
+    public DashboardHeader(YieldServices services) {
+        super(0, 0, 0, Theme.TOP_BAR_HEIGHT, Component.empty());
         this.minecraft = Minecraft.getInstance();
         this.font = minecraft.font;
-        this.projectProvider = projectProvider;
-        this.projectController = projectController;
-        this.sessionStatus = sessionStatus;
+        this.services = services;
+        this.buttonRow = LinearLayout.horizontal().spacing(4);
         initWidgets();
     }
 
@@ -60,13 +48,8 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
         this.nameInput.setMaxLength(32);
         this.nameInput.setResponder(text -> {
             if (currentProject != null && !text.equals(currentProject.name())) {
-                // 1. Create updated record
                 YieldProject updated = currentProject.withName(text);
-
-                // 2. Persist change
-                projectController.updateProject(updated);
-
-                // 3. Notify listener (Screen) to refresh sidebar
+                services.projectController().updateProject(updated);
                 if (onProjectNameUpdated != null) {
                     onProjectNameUpdated.accept(updated);
                 }
@@ -85,15 +68,109 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
             if (onDeleteProjectClicked != null) onDeleteProjectClicked.run();
         }).width(60).build();
 
-        this.rootLayout = LinearLayout.horizontal().spacing(10);
-        this.rootLayout.addChild(this.nameInput);
+        this.buttonRow.addChild(this.startStopButton);
+        this.buttonRow.addChild(this.addGoalButton);
+        this.buttonRow.addChild(this.deleteButton);
+    }
 
-        LinearLayout buttonRow = LinearLayout.horizontal().spacing(4);
-        buttonRow.addChild(this.startStopButton);
-        buttonRow.addChild(this.addGoalButton);
-        buttonRow.addChild(this.deleteButton);
+    public void setFixedSize(int width, int height) {
+        this.setWidth(width);
+        this.setHeight(height);
+        this.arrangeElements();
+    }
 
-        this.rootLayout.addChild(buttonRow);
+    public void arrangeElements() {
+        int buttonsW = 80 + 60 + 60 + (4 * 2);
+        int gap = 10;
+        int availableForInput = Math.max(50, getWidth() - buttonsW - gap);
+
+        this.nameInput.setWidth(availableForInput);
+
+        // Update positions immediately
+        updateChildrenPositions();
+    }
+
+    @Override
+    public void setX(int x) {
+        super.setX(x);
+        updateChildrenPositions();
+    }
+
+    @Override
+    public void setY(int y) {
+        super.setY(y);
+        updateChildrenPositions();
+    }
+
+    private void updateChildrenPositions() {
+        int gap = 10;
+        // Center Input vertically
+        this.nameInput.setX(this.getX());
+        this.nameInput.setY(this.getY() + (this.getHeight() - 20) / 2);
+
+        // Position Button Row
+        this.buttonRow.arrangeElements(); // Ensure button row internal layout is fresh
+        this.buttonRow.setPosition(this.getX() + this.nameInput.getWidth() + gap, this.getY() + (this.getHeight() - this.buttonRow.getHeight()) / 2);
+    }
+
+    @Override
+    protected void renderWidget(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
+        // Ensure positions are correct before rendering (handles dynamic layout updates)
+        updateChildrenPositions();
+
+        this.nameInput.render(gfx, mouseX, mouseY, partialTick);
+        this.buttonRow.visitWidgets(w -> w.render(gfx, mouseX, mouseY, partialTick));
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // 1. Check Input
+        if (this.nameInput.mouseClicked(mouseX, mouseY, button)) {
+            // CRITICAL: Ensure we override focus behavior
+            this.setFocused(true);
+            return true;
+        }
+
+        // 2. Check Buttons
+        final boolean[] handled = {false};
+        this.buttonRow.visitWidgets(w -> {
+            if (!handled[0] && w.mouseClicked(mouseX, mouseY, button)) handled[0] = true;
+        });
+
+        if (handled[0]) {
+            this.setFocused(true);
+            return true;
+        }
+
+        // 3. Fallback to self (activates listeners attached to this widget directly, if any)
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    /**
+     * Propagates focus changes to the inner EditBox.
+     * Without this, the EditBox will not accept key inputs even if DashboardHeader is focused.
+     */
+    @Override
+    public void setFocused(boolean focused) {
+        super.setFocused(focused);
+        if (this.nameInput != null) {
+            this.nameInput.setFocused(focused);
+        }
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        return this.nameInput.charTyped(codePoint, modifiers);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        return this.nameInput.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
+        this.nameInput.updateNarration(narrationElementOutput);
     }
 
     public void setCallbacks(Runnable onStartStop, Runnable onAddGoal, Runnable onDelete) {
@@ -102,7 +179,6 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
         this.onDeleteProjectClicked = onDelete;
     }
 
-    // NEW: Setter for the name update listener
     public void setOnProjectNameUpdated(Consumer<YieldProject> listener) {
         this.onProjectNameUpdated = listener;
     }
@@ -127,83 +203,12 @@ public class DashboardHeader implements Renderable, GuiEventListener, Narratable
         this.addGoalButton.active = hasSel;
         this.deleteButton.active = hasSel;
 
-        if (hasSel && sessionStatus.isRunning()) {
-            Optional<YieldProject> active = projectProvider.getActiveProject();
+        if (hasSel && services.sessionStatus().isRunning()) {
+            Optional<YieldProject> active = services.projectProvider().getActiveProject();
             boolean isActive = active.isPresent() && active.get().id().equals(currentProject.id());
             this.startStopButton.setMessage(isActive ? Component.translatable("yield.label.stop") : Component.translatable("yield.label.switch"));
         } else {
             this.startStopButton.setMessage(Component.translatable("yield.label.start"));
         }
-    }
-
-    public void layout(int x, int y, int width, int height) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-
-        this.rootLayout.setPosition(x, y + Theme.PADDING);
-
-        int buttonRowWidth = 80 + 4 + 60 + 4 + 60;
-        int padding = 20;
-        int inputWidth = Math.max(50, width - buttonRowWidth - padding);
-
-        this.nameInput.setWidth(inputWidth);
-        this.nameInput.setHeight(20);
-
-        this.rootLayout.arrangeElements();
-    }
-
-    @Override
-    public void render(@NotNull GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
-        if (currentProject == null) return;
-        this.nameInput.render(gfx, mouseX, mouseY, partialTick);
-        this.startStopButton.render(gfx, mouseX, mouseY, partialTick);
-        this.addGoalButton.render(gfx, mouseX, mouseY, partialTick);
-        this.deleteButton.render(gfx, mouseX, mouseY, partialTick);
-    }
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (currentProject == null) return false;
-        if (this.nameInput.mouseClicked(mouseX, mouseY, button)) return true;
-        if (this.startStopButton.mouseClicked(mouseX, mouseY, button)) return true;
-        if (this.addGoalButton.mouseClicked(mouseX, mouseY, button)) return true;
-        return this.deleteButton.mouseClicked(mouseX, mouseY, button);
-    }
-
-    @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        return this.nameInput.mouseDragged(mouseX, mouseY, button, dragX, dragY);
-    }
-
-    @Override
-    public boolean charTyped(char codePoint, int modifiers) {
-        return this.nameInput.charTyped(codePoint, modifiers);
-    }
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        return this.nameInput.keyPressed(keyCode, scanCode, modifiers);
-    }
-
-    @Override
-    public void setFocused(boolean focused) {
-        nameInput.setFocused(focused);
-    }
-
-    @Override
-    public boolean isFocused() {
-        return nameInput.isFocused();
-    }
-
-    @Override
-    public @NotNull NarrationPriority narrationPriority() {
-        return nameInput.isFocused() ? NarrationPriority.FOCUSED : NarrationPriority.NONE;
-    }
-
-    @Override
-    public void updateNarration(@NotNull NarrationElementOutput narrationElementOutput) {
-        nameInput.updateNarration(narrationElementOutput);
     }
 }

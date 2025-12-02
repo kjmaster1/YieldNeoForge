@@ -1,6 +1,7 @@
 package com.kjmaster.yield;
 
 import com.kjmaster.yield.client.YieldOverlay;
+import com.kjmaster.yield.domain.GoalDomainService;
 import com.kjmaster.yield.event.YieldInputHandler;
 import com.kjmaster.yield.event.YieldLogicHandler;
 import com.kjmaster.yield.event.internal.YieldEventBus;
@@ -37,13 +38,16 @@ public class Yield {
         // 1. Instantiate Infrastructure
         YieldEventBus eventBus = new YieldEventBus();
 
-        // 2. Instantiate Core Services
+        // 2. Instantiate Domain Services
+        GoalDomainService goalDomainService = new GoalDomainService();
+
+        // 3. Instantiate Core Services
         ProjectRepository repository = new ProjectRepository();
         ProjectManager projectManager = new ProjectManager(repository, eventBus);
-        SessionTracker sessionTracker = new SessionTracker(projectManager, eventBus); // Updated to take bus
+        SessionTracker sessionTracker = new SessionTracker(projectManager, eventBus);
 
-        // 3. Wrap in Registry
-        this.services = new YieldServices(projectManager, sessionTracker, eventBus);
+        // 4. Wrap in Registry
+        this.services = new YieldServices(projectManager, sessionTracker, eventBus, goalDomainService);
 
         // Register Lifecycle Events
         modEventBus.addListener(this::onClientSetup);
@@ -51,14 +55,14 @@ public class Yield {
     }
 
     private void onClientSetup(final FMLClientSetupEvent event) {
-        // 4. Wire Handlers using the Registry
+        // 5. Wire Handlers using the Registry
         YieldLogicHandler logicHandler = new YieldLogicHandler(services);
         YieldInputHandler inputHandler = new YieldInputHandler(services);
 
         NeoForge.EVENT_BUS.register(logicHandler);
         NeoForge.EVENT_BUS.register(inputHandler);
 
-        // 5. Initial Data Load
+        // 6. Initial Data Load
         services.projectManager().load();
 
         LOGGER.info("Yield Services Initialized and Wired.");
@@ -78,9 +82,5 @@ public class Yield {
 
     public YieldServices getServices() {
         return services;
-    }
-
-    public ProjectManager getProjectManager() {
-        return services.projectManager();
     }
 }

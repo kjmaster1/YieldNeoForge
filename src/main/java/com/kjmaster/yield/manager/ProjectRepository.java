@@ -19,79 +19,78 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ProjectRepository {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final String FILE_NAME = "projects.json";
+    private static final String DIR_NAME = "projects";
 
-    public List<YieldProject> load() {
-        File file = getStorageFile();
+    /**
+     * Loads all projects from the project directory.
+     */
+    public List<YieldProject> loadAll() {
+        File dir = getStorageDirectory();
         List<YieldProject> projects = new ArrayList<>();
 
-        if (!file.exists()) return projects;
+        if (!dir.exists() || !dir.isDirectory()) return projects;
 
-        try (FileReader reader = new FileReader(file)) {
-            JsonElement json = GSON.fromJson(reader, JsonElement.class);
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".json"));
+        if (files == null) return projects;
 
-            if (json != null) {
-                YieldProject.CODEC.listOf()
-                        .parse(JsonOps.INSTANCE, json)
-                        .resultOrPartial(err -> Yield.LOGGER.error("Failed to parse projects: {}", err))
-                        .ifPresent(projects::addAll);
+        for (File file : files) {
+            try (FileReader reader = new FileReader(file)) {
+                JsonElement json = GSON.fromJson(reader, JsonElement.class);
+                if (json != null) {
+                    YieldProject.CODEC.parse(JsonOps.INSTANCE, json)
+                            .resultOrPartial(err -> Yield.LOGGER.error("Failed to parse project {}: {}", file.getName(), err))
+                            .ifPresent(projects::add);
+                }
+            } catch (IOException e) {
+                Yield.LOGGER.error("Could not load project file: " + file.getName(), e);
             }
-        } catch (IOException e) {
-            Yield.LOGGER.error("Could not load Yield projects", e);
         }
         return projects;
     }
 
     /**
-     * Saves the projects list to disk.
-     * @return true if successful, false otherwise.
+     * Saves a specific project to its own file.
      */
-    public boolean save(List<YieldProject> projects, File targetFile) {
-        var result = YieldProject.CODEC.listOf().encodeStart(JsonOps.INSTANCE, projects);
-        AtomicBoolean success = new AtomicBoolean(true);
+    public boolean saveProject(YieldProject project) {
+        File dir = getStorageDirectory();
+        if (!dir.exists() && !dir.mkdirs()) {
+            Yield.LOGGER.error("Could not create project directory: {}", dir.getAbsolutePath());
+            return false;
+        }
 
-        result.resultOrPartial(err -> {
-            Yield.LOGGER.error("Serialization error: {}", err);
-            success.set(false);
-        }).ifPresent(json -> {
-            try {
-                File tempFile = new File(targetFile.getParentFile(), FILE_NAME + ".tmp");
-                // Ensure parent exists
-                if (!tempFile.getParentFile().exists() && !tempFile.getParentFile().mkdirs()) {
-                    throw new IOException("Could not create directory: " + tempFile.getParent());
-                }
+        File file = new File(dir, project.id().toString() + ".json");
 
-                try (FileWriter writer = new FileWriter(tempFile)) {
-                    GSON.toJson(json, writer);
-                }
-
-                Files.move(
-                        tempFile.toPath(),
-                        targetFile.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING,
-                        StandardCopyOption.ATOMIC_MOVE
-                );
-
-            } catch (IOException e) {
-                Yield.LOGGER.error("Could not save Yield projects", e);
-                success.set(false);
-            }
-        });
-
-        // If result was empty (encoding failed completely), success is effectively false,
-        // but the AtomicBoolean default was true. However, resultOrPartial handles logging.
-        // We need to check if result is present too.
-        return success.get() && result.result().isPresent();
+        return YieldProject.CODEC.encodeStart(JsonOps.INSTANCE, project)
+                .resultOrPartial(err -> Yield.LOGGER.error("Serialization error for project {}: {}", project.name(), err))
+                .map(json -> {
+                    try (FileWriter writer = new FileWriter(file)) {
+                        GSON.toJson(json, writer);
+                        return true;
+                    } catch (IOException e) {
+                        Yield.LOGGER.error("Could not save project: " + project.name(), e);
+                        return false;
+                    }
+                }).orElse(false);
     }
 
-    public File getStorageFile() {
+    public void deleteProject(YieldProject project) {
+        File dir = getStorageDirectory();
+        File file = new File(dir, project.id().toString() + ".json");
+        if (file.exists()) {
+            try {
+                Files.delete(file.toPath());
+            } catch (IOException e) {
+                Yield.LOGGER.error("Failed to delete project file: " + file.getName(), e);
+            }
+        }
+    }
+
+    public File getStorageDirectory() {
         Minecraft mc = Minecraft.getInstance();
         String folderName;
         Path storageDir;
@@ -114,11 +113,11 @@ public class ProjectRepository {
                     .resolve(folderName);
         }
 
-        File folder = storageDir.toFile();
-        if (!folder.exists()) {
-            folder.mkdirs();
-        }
+        return storageDir.resolve(DIR_NAME).toFile();
+    }
 
-        return new File(folder, FILE_NAME);
+    // Legacy method stub for compatibility during transition if needed
+    public File getStorageFile() {
+        return getStorageDirectory();
     }
 }

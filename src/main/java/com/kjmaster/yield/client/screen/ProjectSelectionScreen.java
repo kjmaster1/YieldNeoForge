@@ -101,7 +101,7 @@ public class ProjectSelectionScreen extends Screen {
     }
 
     private void selectProject(YieldProject project) {
-        YieldProject updated = project.addGoal(ProjectGoal.fromStack(stackToTrack, stackToTrack.getCount()));
+        YieldProject updated = services.goalDomainService().addGoal(project, ProjectGoal.fromStack(stackToTrack, stackToTrack.getCount()));
         services.projectController().updateProject(updated);
         services.projectController().setActiveProject(updated);
         services.sessionController().startSession();

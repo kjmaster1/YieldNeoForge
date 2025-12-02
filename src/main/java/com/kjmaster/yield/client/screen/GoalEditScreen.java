@@ -119,7 +119,9 @@ public class GoalEditScreen extends Screen {
                     this.goal.components(),
                     this.goal.targetTag()
             );
-            YieldProject updatedProject = this.projectContext.updateGoal(updatedGoal);
+
+            YieldProject updatedProject = services.goalDomainService().updateGoal(this.projectContext, updatedGoal);
+
             this.parent.updateUiState(updatedProject);
             this.services.projectController().updateProject(updatedProject);
         } catch (NumberFormatException ignored) {}

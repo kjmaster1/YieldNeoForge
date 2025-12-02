@@ -57,8 +57,6 @@ public class YieldDashboardScreen extends Screen {
     protected void init() {
         this.jeiLoaded = ModList.get().isLoaded("jei");
 
-        // 1. Create Widgets with Specific Dependencies (Interface Segregation)
-
         this.projectSidebar = new ProjectSidebar(
                 this.minecraft,
                 0,
@@ -81,30 +79,21 @@ public class YieldDashboardScreen extends Screen {
                 services.eventBus()
         );
 
-        // Wire up logic
         wireEvents();
 
-        // 2. Build Layout Tree
         this.rootLayout.defaultCellSetting().alignVerticallyTop();
-
-        // Left: Sidebar
         this.rootLayout.addChild(projectSidebar, layoutSettings -> layoutSettings.padding(0));
 
-        // Right: Content
         LinearLayout contentLayout = LinearLayout.vertical();
         contentLayout.defaultCellSetting().alignHorizontallyLeft().padding(PADDING);
         contentLayout.addChild(dashboardHeader);
         contentLayout.addChild(goalGrid);
 
         this.rootLayout.addChild(contentLayout);
-
-        // 3. Register Widgets
         this.rootLayout.visitWidgets(this::addRenderableWidget);
 
-        // 4. Calculate Positions
         repositionElements();
 
-        // 5. Restore State
         this.projectSidebar.refreshList();
         restoreSelection();
     }
@@ -116,10 +105,8 @@ public class YieldDashboardScreen extends Screen {
         int screenH = this.height;
 
         this.projectSidebar.setFixedSize(SIDEBAR_WIDTH, screenH);
-
         int contentWidth = screenW - SIDEBAR_WIDTH - (PADDING * 2);
         this.dashboardHeader.setFixedSize(contentWidth, TOP_BAR_HEIGHT);
-
         int gridHeight = screenH - TOP_BAR_HEIGHT - (PADDING * 3);
         this.goalGrid.setFixedSize(contentWidth, gridHeight);
 
@@ -130,7 +117,6 @@ public class YieldDashboardScreen extends Screen {
     }
 
     private void wireEvents() {
-        // UI Interaction Glue
         this.dashboardHeader.setOnAddGoalClicked(this::openItemSelector);
         this.projectSidebar.setOnProjectSelected(this::onSidebarSelection);
 
@@ -140,12 +126,9 @@ public class YieldDashboardScreen extends Screen {
             if (p == null) return;
 
             if (isRightClick) {
-                // Goal Removal
-                YieldProject updated = p.removeGoal(goal);
+                YieldProject updated = services.goalDomainService().removeGoal(p, goal);
                 services.projectController().updateProject(updated);
-                // Note: Header/Grid update automatically via EventBus
             } else {
-                // Goal Edit
                 this.minecraft.setScreen(new GoalEditScreen(this, goal, p, services));
             }
         });
@@ -153,17 +136,14 @@ public class YieldDashboardScreen extends Screen {
 
     private void onSidebarSelection(YieldProject project) {
         if (project != null) this.lastSelectedProjectId = project.id();
-        // Update components that might not be fully event-driven yet for initial selection
         dashboardHeader.setProject(project);
         goalGrid.setProject(project);
     }
 
     public void updateUiState(YieldProject updatedProject) {
         this.lastSelectedProjectId = updatedProject.id();
-        // Sidebar refresh is usually handled by ProjectUpdated, but we might need to force selection
         projectSidebar.refreshList();
         projectSidebar.selectProject(updatedProject);
-
         dashboardHeader.setProject(updatedProject);
         goalGrid.setProject(updatedProject);
     }
@@ -224,7 +204,7 @@ public class YieldDashboardScreen extends Screen {
         YieldProject projectToPass = project;
         if (targetGoal == null) {
             targetGoal = ProjectGoal.fromStack(stack, 64);
-            YieldProject updated = project.addGoal(targetGoal);
+            YieldProject updated = services.goalDomainService().addGoal(project, targetGoal);
             services.projectController().updateProject(updated);
             updateUiState(updated);
             projectToPass = updated;
@@ -239,7 +219,7 @@ public class YieldDashboardScreen extends Screen {
         var optionalItem = BuiltInRegistries.ITEM.getTag(tag).flatMap(holders -> holders.stream().findFirst()).map(Holder::value);
         Item displayItem = optionalItem.orElse(Items.BARRIER);
         ProjectGoal goal = new ProjectGoal(displayItem, 64, false, java.util.Optional.empty(), java.util.Optional.of(tag));
-        YieldProject updated = project.addGoal(goal);
+        YieldProject updated = services.goalDomainService().addGoal(project, goal);
         services.projectController().updateProject(updated);
         updateUiState(updated);
         Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));

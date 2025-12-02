@@ -1,14 +1,12 @@
 package com.kjmaster.yield.service;
 
 import com.kjmaster.yield.compat.curios.CuriosInventoryProvider;
-import com.kjmaster.yield.tracker.GoalTracker;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class InventoryScanner {
 
@@ -21,18 +19,18 @@ public class InventoryScanner {
         }
     }
 
-    public void updateTrackerCounts(Player player, Map<Item, List<GoalTracker>> itemTrackers) {
-        scan(player, itemTrackers, null);
-    }
+    /**
+     * Creates a thread-safe snapshot of the player's inventory.
+     * This method MUST be called on the Main Thread.
+     */
+    public List<ItemStack> createSnapshot(Player player) {
+        List<ItemStack> snapshot = new ArrayList<>();
+        // Pre-size optimization could be done if we knew slot counts, but ArrayList resize is fast enough
 
-    public void updateSpecificCounts(Player player, Item targetItem, List<GoalTracker> trackers) {
-        Map<Item, List<GoalTracker>> specificMap = Map.of(targetItem, trackers);
-        scan(player, specificMap, targetItem);
-    }
-
-    private void scan(Player player, Map<Item, List<GoalTracker>> itemTrackers, Item targetItemFilter) {
         for (IInventoryProvider provider : providers) {
-            provider.scan(player, itemTrackers, targetItemFilter);
+            provider.collect(player, snapshot::add);
         }
+
+        return snapshot;
     }
 }

@@ -4,6 +4,7 @@ import com.kjmaster.yield.api.IProjectController;
 import com.kjmaster.yield.api.IProjectProvider;
 import com.kjmaster.yield.api.ISessionController;
 import com.kjmaster.yield.api.ISessionStatus;
+import com.kjmaster.yield.event.internal.YieldEventBus;
 import com.kjmaster.yield.manager.ProjectManager;
 import com.kjmaster.yield.tracker.InventoryMonitor;
 import com.kjmaster.yield.tracker.SessionTracker;
@@ -14,7 +15,8 @@ import com.kjmaster.yield.tracker.SessionTracker;
  */
 public record YieldServices(
         ProjectManager projectManager,
-        SessionTracker sessionTracker
+        SessionTracker sessionTracker,
+        YieldEventBus eventBus
 ) {
     // Convenience Accessors for Interface Segregation
     public IProjectProvider projectProvider() {

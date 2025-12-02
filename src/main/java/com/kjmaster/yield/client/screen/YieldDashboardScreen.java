@@ -8,7 +8,6 @@ import com.kjmaster.yield.client.component.ProjectSidebar;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.layouts.LinearLayout;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
@@ -58,27 +57,42 @@ public class YieldDashboardScreen extends Screen {
     protected void init() {
         this.jeiLoaded = ModList.get().isLoaded("jei");
 
-        // 1. Create Widgets (Dimensions will be set by layout/repositionElements)
-        this.projectSidebar = new ProjectSidebar(this.minecraft, 0, 0, services);
+        // 1. Create Widgets with Specific Dependencies (Interface Segregation)
+
+        this.projectSidebar = new ProjectSidebar(
+                this.minecraft,
+                0,
+                0,
+                services.projectProvider(),
+                services.projectController(),
+                services.sessionStatus(),
+                services.eventBus()
+        );
+
         this.dashboardHeader = new DashboardHeader(services);
-        this.goalGrid = new GoalGrid(this.minecraft, 0, 0, 0, 0, services);
+
+        this.goalGrid = new GoalGrid(
+                this.minecraft,
+                0,
+                0,
+                0,
+                0,
+                services.sessionStatus(),
+                services.eventBus()
+        );
 
         // Wire up logic
         wireEvents();
 
         // 2. Build Layout Tree
-        // Root: Horizontal [Sidebar | Content]
         this.rootLayout.defaultCellSetting().alignVerticallyTop();
 
-        // Left: Sidebar (Fixed Width, Full Height)
-        this.rootLayout.addChild(projectSidebar, layoutSettings ->
-                layoutSettings.padding(0)
-        );
+        // Left: Sidebar
+        this.rootLayout.addChild(projectSidebar, layoutSettings -> layoutSettings.padding(0));
 
-        // Right: Content Vertical [Header | Grid]
+        // Right: Content
         LinearLayout contentLayout = LinearLayout.vertical();
         contentLayout.defaultCellSetting().alignHorizontallyLeft().padding(PADDING);
-
         contentLayout.addChild(dashboardHeader);
         contentLayout.addChild(goalGrid);
 
@@ -97,42 +111,28 @@ public class YieldDashboardScreen extends Screen {
 
     @Override
     protected void repositionElements() {
-        // Calculate available area
         int rightMargin = jeiLoaded ? Theme.JEI_WIDTH : 0;
         int screenW = this.width - rightMargin;
         int screenH = this.height;
 
-        // 1. Configure Sidebar fixed size
         this.projectSidebar.setFixedSize(SIDEBAR_WIDTH, screenH);
 
-        // 2. Configure Header fixed size (Fill remaining width)
-        // Subtract sidebar width and padding (Left padding for content + Right padding)
         int contentWidth = screenW - SIDEBAR_WIDTH - (PADDING * 2);
         this.dashboardHeader.setFixedSize(contentWidth, TOP_BAR_HEIGHT);
 
-        // 3. Configure Grid fixed size (Fill remaining height)
-        // H = Total - Header - Padding*3 (Header Top Gap, Header/Grid Gap, Bottom Gap)
         int gridHeight = screenH - TOP_BAR_HEIGHT - (PADDING * 3);
         this.goalGrid.setFixedSize(contentWidth, gridHeight);
 
-        // 4. Apply Layout
-        // This forces the LinearLayout to set X, Y on all children based on their sizes and structure
         this.rootLayout.arrangeElements();
-        this.rootLayout.setPosition(0, 0); // Top-Left anchor
+        this.rootLayout.setPosition(0, 0);
 
-        // 5. Refresh Grid internals now that size is known
         this.goalGrid.reflow();
     }
 
     private void wireEvents() {
-        this.dashboardHeader.setOnProjectNameUpdated(this::updateUiState);
+        // UI Interaction Glue
+        this.dashboardHeader.setOnAddGoalClicked(this::openItemSelector);
         this.projectSidebar.setOnProjectSelected(this::onSidebarSelection);
-
-        this.dashboardHeader.setCallbacks(
-                this::toggleTracking,
-                this::openItemSelector,
-                this::deleteProject
-        );
 
         this.goalGrid.setOnGoalClicked((goal, isRightClick) -> {
             Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
@@ -140,10 +140,12 @@ public class YieldDashboardScreen extends Screen {
             if (p == null) return;
 
             if (isRightClick) {
+                // Goal Removal
                 YieldProject updated = p.removeGoal(goal);
                 services.projectController().updateProject(updated);
-                updateUiState(updated);
+                // Note: Header/Grid update automatically via EventBus
             } else {
+                // Goal Edit
                 this.minecraft.setScreen(new GoalEditScreen(this, goal, p, services));
             }
         });
@@ -151,14 +153,17 @@ public class YieldDashboardScreen extends Screen {
 
     private void onSidebarSelection(YieldProject project) {
         if (project != null) this.lastSelectedProjectId = project.id();
+        // Update components that might not be fully event-driven yet for initial selection
         dashboardHeader.setProject(project);
         goalGrid.setProject(project);
     }
 
     public void updateUiState(YieldProject updatedProject) {
         this.lastSelectedProjectId = updatedProject.id();
+        // Sidebar refresh is usually handled by ProjectUpdated, but we might need to force selection
         projectSidebar.refreshList();
         projectSidebar.selectProject(updatedProject);
+
         dashboardHeader.setProject(updatedProject);
         goalGrid.setProject(updatedProject);
     }
@@ -177,30 +182,6 @@ public class YieldDashboardScreen extends Screen {
                 toSelect = allProjects.getFirst();
             }
             projectSidebar.selectProject(toSelect);
-        }
-    }
-
-    private void toggleTracking() {
-        YieldProject p = projectSidebar.getSelectedProject();
-        if (p == null) return;
-        if (services.sessionStatus().isRunning()) {
-            services.sessionController().stopSession();
-        } else {
-            services.projectController().setActiveProject(p);
-            services.sessionController().startSession();
-        }
-        dashboardHeader.updateButtonStates();
-    }
-
-    private void deleteProject() {
-        YieldProject p = projectSidebar.getSelectedProject();
-        if (p != null) {
-            services.projectController().deleteProject(p);
-            projectSidebar.refreshList();
-            if (lastSelectedProjectId != null && lastSelectedProjectId.equals(p.id())) {
-                lastSelectedProjectId = null;
-            }
-            restoreSelection();
         }
     }
 

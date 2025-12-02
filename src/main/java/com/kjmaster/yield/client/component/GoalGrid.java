@@ -1,7 +1,9 @@
 package com.kjmaster.yield.client.component;
 
-import com.kjmaster.yield.YieldServices;
+import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.client.Theme;
+import com.kjmaster.yield.event.internal.YieldEventBus;
+import com.kjmaster.yield.event.internal.YieldEvents;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.tracker.GoalTracker;
@@ -19,7 +21,9 @@ import java.util.function.BiConsumer;
 
 public class GoalGrid extends ObjectSelectionList<GoalGrid.GoalRow> {
 
-    private final YieldServices services;
+    private final ISessionStatus sessionStatus;
+    private final YieldEventBus eventBus;
+
     private YieldProject currentProject;
     private BiConsumer<ProjectGoal, Boolean> onGoalClicked;
 
@@ -27,24 +31,32 @@ public class GoalGrid extends ObjectSelectionList<GoalGrid.GoalRow> {
     private final int gap = Theme.GOAL_SLOT_GAP;
     private int columns = 1;
 
-    public GoalGrid(Minecraft mc, int width, int height, int top, int bottom, YieldServices services) {
+    public GoalGrid(Minecraft mc, int width, int height, int top, int bottom,
+                    ISessionStatus sessionStatus, YieldEventBus eventBus) {
         super(mc, width, height, top, Theme.GOAL_SLOT_SIZE + Theme.GOAL_SLOT_GAP);
-        this.services = services;
+        this.sessionStatus = sessionStatus;
+        this.eventBus = eventBus;
+        registerEvents();
     }
 
-    /**
-     * Updates the size of the grid view.
-     * Maps to updateSizeAndPosition in AbstractSelectionList.
-     * Called manually by the Screen during resize events.
-     */
+    private void registerEvents() {
+        // Switch context when active project changes via other controls
+        eventBus.register(YieldEvents.ActiveProjectChanged.class, event -> {
+            this.setProject(event.newActiveProject());
+        });
+
+        // Reflow if the current project is updated (e.g. goal added/removed, strict mode toggled)
+        eventBus.register(YieldEvents.ProjectUpdated.class, event -> {
+            if (currentProject != null && currentProject.id().equals(event.project().id())) {
+                this.setProject(event.project());
+            }
+        });
+    }
+
     public void setFixedSize(int width, int height) {
         this.updateSizeAndPosition(width, height, this.getY());
     }
 
-    /**
-     * Override to allow Right-Clicking (Button 1).
-     * By default, AbstractSelectionList only accepts Button 0 (Left Click).
-     */
     @Override
     protected boolean isValidMouseClick(int button) {
         return button == 0 || button == 1;
@@ -127,7 +139,7 @@ public class GoalGrid extends ObjectSelectionList<GoalGrid.GoalRow> {
     }
 
     private void renderSmartTooltip(GuiGraphics gfx, int mouseX, int mouseY, ProjectGoal goal) {
-        GoalTracker tracker = services.sessionStatus().getTracker(goal);
+        GoalTracker tracker = sessionStatus.getTracker(goal);
         List<Component> tooltip = new ArrayList<>();
         if (goal.targetTag().isPresent()) {
             tooltip.add(Component.literal(goal.targetTag().get().location().toString()).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
@@ -182,7 +194,7 @@ public class GoalGrid extends ObjectSelectionList<GoalGrid.GoalRow> {
         private void renderGoalSlot(GuiGraphics gfx, ProjectGoal goal, int x, int y, boolean isHovered) {
             int bgColor = isHovered ? Theme.GRID_ITEM_HOVER : Theme.GRID_ITEM_BG;
             gfx.fill(x, y, x + slotSize, y + slotSize, bgColor);
-            GoalTracker tracker = services.sessionStatus().getTracker(goal);
+            GoalTracker tracker = sessionStatus.getTracker(goal);
             float progress = tracker.getProgress();
             if (progress > 0) {
                 gfx.pose().pushPose();

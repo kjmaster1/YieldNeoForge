@@ -2,6 +2,8 @@ package com.kjmaster.yield.manager;
 
 import com.kjmaster.yield.api.IProjectController;
 import com.kjmaster.yield.api.IProjectProvider;
+import com.kjmaster.yield.event.internal.YieldEventBus;
+import com.kjmaster.yield.event.internal.YieldEvents;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.util.Debouncer;
 
@@ -15,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 public class ProjectManager implements IProjectProvider, IProjectController {
 
     private final ProjectRepository repository;
+    private final YieldEventBus eventBus;
     private final Debouncer debouncer;
 
     private final List<YieldProject> projects = new ArrayList<>();
@@ -23,8 +26,9 @@ public class ProjectManager implements IProjectProvider, IProjectController {
     // Volatile to ensure visibility across threads (Debouncer -> Render Thread)
     private volatile boolean saveFailed = false;
 
-    public ProjectManager(ProjectRepository repository) {
+    public ProjectManager(ProjectRepository repository, YieldEventBus eventBus) {
         this.repository = repository;
+        this.eventBus = eventBus;
         this.debouncer = new Debouncer();
     }
 
@@ -33,15 +37,19 @@ public class ProjectManager implements IProjectProvider, IProjectController {
         YieldProject project = new YieldProject(name);
         projects.add(project);
         save();
+        eventBus.post(new YieldEvents.ProjectListChanged());
     }
 
     @Override
     public void deleteProject(YieldProject project) {
-        projects.removeIf(p -> p.id().equals(project.id()));
-        if (activeProject != null && activeProject.id().equals(project.id())) {
-            activeProject = null;
+        boolean removed = projects.removeIf(p -> p.id().equals(project.id()));
+        if (removed) {
+            if (activeProject != null && activeProject.id().equals(project.id())) {
+                setActiveProject(null);
+            }
+            save();
+            eventBus.post(new YieldEvents.ProjectListChanged());
         }
-        save();
     }
 
     @Override
@@ -49,10 +57,15 @@ public class ProjectManager implements IProjectProvider, IProjectController {
         for (int i = 0; i < projects.size(); i++) {
             if (projects.get(i).id().equals(newProjectState.id())) {
                 projects.set(i, newProjectState);
+
+                // If this was the active project, update the reference and notify
                 if (activeProject != null && activeProject.id().equals(newProjectState.id())) {
-                    activeProject = newProjectState;
+                    this.activeProject = newProjectState;
+                    eventBus.post(new YieldEvents.ActiveProjectChanged(newProjectState));
                 }
+
                 save();
+                eventBus.post(new YieldEvents.ProjectUpdated(newProjectState));
                 return;
             }
         }
@@ -61,6 +74,7 @@ public class ProjectManager implements IProjectProvider, IProjectController {
     @Override
     public void setActiveProject(YieldProject project) {
         this.activeProject = project;
+        eventBus.post(new YieldEvents.ActiveProjectChanged(project));
     }
 
     @Override
@@ -83,6 +97,7 @@ public class ProjectManager implements IProjectProvider, IProjectController {
         this.projects.clear();
         this.activeProject = null;
         this.saveFailed = false;
+        eventBus.post(new YieldEvents.ProjectListChanged());
     }
 
     @Override
@@ -104,5 +119,6 @@ public class ProjectManager implements IProjectProvider, IProjectController {
         this.saveFailed = false;
         List<YieldProject> loaded = repository.load();
         this.projects.addAll(loaded);
+        eventBus.post(new YieldEvents.ProjectListChanged());
     }
 }

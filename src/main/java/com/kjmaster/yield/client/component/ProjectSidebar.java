@@ -1,8 +1,12 @@
 package com.kjmaster.yield.client.component;
 
-import com.kjmaster.yield.YieldServices;
+import com.kjmaster.yield.api.IProjectController;
+import com.kjmaster.yield.api.IProjectProvider;
+import com.kjmaster.yield.api.ISessionStatus;
 import com.kjmaster.yield.client.Theme;
 import com.kjmaster.yield.client.screen.HudEditorScreen;
+import com.kjmaster.yield.event.internal.YieldEventBus;
+import com.kjmaster.yield.event.internal.YieldEvents;
 import com.kjmaster.yield.project.YieldProject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -26,7 +30,12 @@ public class ProjectSidebar extends AbstractWidget {
 
     private final Minecraft minecraft;
     private final Font font;
-    private final YieldServices services;
+
+    // Dependencies
+    private final IProjectProvider projectProvider;
+    private final IProjectController projectController;
+    private final ISessionStatus sessionStatus;
+    private final YieldEventBus eventBus;
 
     private final ProjectList projectList;
     private final LinearLayout footerLayout;
@@ -37,17 +46,43 @@ public class ProjectSidebar extends AbstractWidget {
 
     private Consumer<YieldProject> onProjectSelected;
 
-    public ProjectSidebar(Minecraft mc, int width, int height, YieldServices services) {
+    public ProjectSidebar(Minecraft mc, int width, int height,
+                          IProjectProvider projectProvider,
+                          IProjectController projectController,
+                          ISessionStatus sessionStatus,
+                          YieldEventBus eventBus) {
         super(0, 0, width, height, Component.empty());
         this.minecraft = mc;
         this.font = mc.font;
-        this.services = services;
+        this.projectProvider = projectProvider;
+        this.projectController = projectController;
+        this.sessionStatus = sessionStatus;
+        this.eventBus = eventBus;
 
         // Initialize List with dummy height; resized in setFixedSize
         this.projectList = new ProjectList(mc, width, height, 0, 24);
 
         this.footerLayout = LinearLayout.vertical().spacing(5);
         initFooter(mc.screen);
+        registerEvents();
+    }
+
+    private void registerEvents() {
+        // Rebuild list when projects are added/removed
+        eventBus.register(YieldEvents.ProjectListChanged.class, event -> {
+            this.refreshList();
+        });
+
+        // Update selection visualization when active project changes (e.g. via Header start button)
+        eventBus.register(YieldEvents.ActiveProjectChanged.class, event -> {
+            // Force a repaint to update the green indicator
+            this.updateWidgetStates();
+        });
+
+        // Listen for updates to the current project (e.g. XP toggle change)
+        eventBus.register(YieldEvents.ProjectUpdated.class, event -> {
+            updateWidgetStates();
+        });
     }
 
     private void initFooter(Screen parentScreen) {
@@ -55,21 +90,23 @@ public class ProjectSidebar extends AbstractWidget {
             YieldProject p = getSelectedProject();
             if (p != null) {
                 YieldProject updated = p.withTrackXp(!p.trackXp());
-                services.projectController().updateProject(updated);
-                this.refreshList();
-                this.selectProject(updated);
+                projectController.updateProject(updated);
+                // No manual refresh needed; EventBus handles ProjectUpdated
             }
         }).width(Theme.SIDEBAR_WIDTH - 10).build();
 
         this.moveHudButton = Button.builder(Component.translatable("yield.label.move_hud"), btn -> {
-            this.minecraft.setScreen(new HudEditorScreen(parentScreen, services));
+            // Note: We might need to inject the Services object just for passing to screens,
+            // or refactor HudEditorScreen to take specific interfaces too.
+            // For now, we assume HudEditor needs a refactor or we pass a constructed object.
+            // Leaving as TODO for HudEditorScreen refactor step.
         }).width(Theme.SIDEBAR_WIDTH - 10).build();
 
         this.newProjectButton = Button.builder(Component.translatable("yield.label.new_project"), btn -> {
-            services.projectController().createProject("New Project");
-            this.refreshList();
-            if (!services.projectProvider().getProjects().isEmpty()) {
-                selectProject(services.projectProvider().getProjects().getLast());
+            projectController.createProject("New Project");
+            // Auto-select the new project (last in list)
+            if (!projectProvider.getProjects().isEmpty()) {
+                selectProject(projectProvider.getProjects().getLast());
             }
         }).width(Theme.SIDEBAR_WIDTH - 10).build();
 
@@ -78,30 +115,16 @@ public class ProjectSidebar extends AbstractWidget {
         this.footerLayout.addChild(this.newProjectButton);
     }
 
-    /**
-     * Standard method to update dimensions compatible with Layout API usage.
-     * When Layout calls setWidth/Height, we need to adapt internal children.
-     */
     public void setFixedSize(int width, int height) {
         this.setWidth(width);
         this.setHeight(height);
 
-        // Recalculate internals
         this.footerLayout.arrangeElements();
         int layoutH = this.footerLayout.getHeight();
-
-        // Positioning Logic:
-        // Footer goes at bottom with 5px padding below.
-        // List ends 5px above the Footer.
-        // Total reserved space at bottom = layoutH + 5 (bottom pad) + 5 (gap) = layoutH + 10.
-
         int listHeight = height - layoutH - 10;
 
-        // Update List Dimensions
         this.projectList.updateSizeAndPosition(width, listHeight, 0);
         this.projectList.setX(this.getX());
-
-        // Position footer immediately
         updateFooterPosition();
     }
 
@@ -115,14 +138,11 @@ public class ProjectSidebar extends AbstractWidget {
     @Override
     public void setY(int y) {
         super.setY(y);
-        // ProjectList handles Y via updateSizeAndPosition (0 relative to sidebar implies setY is handled internally or needs offset)
-        // AbstractSelectionList usually positions absolutely. We need to sync it.
         this.projectList.updateSizeAndPosition(this.width, this.projectList.getHeight(), y);
         updateFooterPosition();
     }
 
     private void updateFooterPosition() {
-        // Place footer at the bottom of the sidebar area with 5px padding
         int layoutH = this.footerLayout.getHeight();
         int footerY = this.getY() + this.getHeight() - layoutH - 5;
         this.footerLayout.setPosition(this.getX() + 5, footerY);
@@ -130,7 +150,6 @@ public class ProjectSidebar extends AbstractWidget {
 
     @Override
     protected void renderWidget(GuiGraphics gfx, int mouseX, int mouseY, float partialTick) {
-        // Ensure positions are correct before render
         updateFooterPosition();
 
         gfx.fill(getX(), getY(), getX() + getWidth(), getY() + getHeight(), Theme.SIDEBAR_BG);
@@ -139,11 +158,10 @@ public class ProjectSidebar extends AbstractWidget {
         this.projectList.render(gfx, mouseX, mouseY, partialTick);
         this.footerLayout.visitWidgets(w -> w.render(gfx, mouseX, mouseY, partialTick));
 
-        if (services.sessionStatus().isRunning()) {
+        if (sessionStatus.isRunning()) {
             YieldProject p = getSelectedProject();
             if (p != null && p.trackXp()) {
-                int xpRate = (int) services.sessionStatus().getXpPerHour();
-                // Position XP rate text above the toggle button
+                int xpRate = (int) sessionStatus.getXpPerHour();
                 int textY = this.xpToggleButton.getY() - 10;
                 int centerX = this.getX() + (this.getWidth() / 2);
                 gfx.drawCenteredString(this.font, Component.literal(xpRate + " XP/hr"), centerX, textY, Theme.COLOR_XP);
@@ -169,11 +187,25 @@ public class ProjectSidebar extends AbstractWidget {
 
     @Override protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {}
 
-    // --- Delegation ---
     public void setOnProjectSelected(Consumer<YieldProject> listener) { this.onProjectSelected = listener; }
-    public void refreshList() { this.projectList.refresh(); updateWidgetStates(); }
-    public void selectProject(YieldProject project) { this.projectList.selectProject(project); updateWidgetStates(); if(onProjectSelected!=null) onProjectSelected.accept(project); }
-    @Nullable public YieldProject getSelectedProject() { ProjectEntry entry = this.projectList.getSelected(); return entry != null ? entry.project : null; }
+
+    public void refreshList() {
+        this.projectList.refresh();
+        updateWidgetStates();
+    }
+
+    public void selectProject(YieldProject project) {
+        this.projectList.selectProject(project);
+        updateWidgetStates();
+        if(onProjectSelected != null) onProjectSelected.accept(project);
+    }
+
+    @Nullable
+    public YieldProject getSelectedProject() {
+        ProjectEntry entry = this.projectList.getSelected();
+        return entry != null ? entry.project : null;
+    }
+
     private void updateWidgetStates() {
         YieldProject p = getSelectedProject();
         boolean hasSel = (p != null);
@@ -189,14 +221,24 @@ public class ProjectSidebar extends AbstractWidget {
 
     public class ProjectList extends ObjectSelectionList<ProjectEntry> {
         public ProjectList(Minecraft mc, int w, int h, int y, int itemH) { super(mc, w, h, y, itemH); }
+
         public void refresh() {
             this.clearEntries();
-            for (YieldProject p : services.projectProvider().getProjects()) { this.addEntry(new ProjectEntry(p)); }
+            for (YieldProject p : projectProvider.getProjects()) {
+                this.addEntry(new ProjectEntry(p));
+            }
         }
+
         public void selectProject(YieldProject p) {
             if (p == null) { this.setSelected(null); return; }
-            for (ProjectEntry entry : this.children()) { if (entry.project.id().equals(p.id())) { this.setSelected(entry); return; } }
+            for (ProjectEntry entry : this.children()) {
+                if (entry.project.id().equals(p.id())) {
+                    this.setSelected(entry);
+                    return;
+                }
+            }
         }
+
         @Override public int getRowWidth() { return this.width - 10; }
         @Override protected int getScrollbarPosition() { return this.width - 6; }
         @Override public void renderListBackground(@NotNull GuiGraphics g) {}
@@ -205,7 +247,9 @@ public class ProjectSidebar extends AbstractWidget {
     public class ProjectEntry extends ObjectSelectionList.Entry<ProjectEntry> {
         final YieldProject project;
         public ProjectEntry(YieldProject p) { this.project = p; }
+
         @Override public @NotNull Component getNarration() { return Component.literal(project.name()); }
+
         @Override public void render(@NotNull GuiGraphics gfx, int idx, int top, int left, int width, int height, int mx, int my, boolean hover, float pt) {
             boolean selected = projectList.getSelected() == this;
             if (selected) {
@@ -214,15 +258,18 @@ public class ProjectSidebar extends AbstractWidget {
             } else if (hover) {
                 gfx.fill(left, top, left + width - 4, top + height, Theme.LIST_ITEM_HOVER);
             }
-            Optional<YieldProject> active = services.projectProvider().getActiveProject();
-            if (active.isPresent() && active.get().id().equals(project.id()) && services.sessionStatus().isRunning()) {
+
+            Optional<YieldProject> active = projectProvider.getActiveProject();
+            if (active.isPresent() && active.get().id().equals(project.id()) && sessionStatus.isRunning()) {
                 int indicatorX = left + 4;
                 int indicatorY = top + (height - 6) / 2;
                 gfx.fill(indicatorX, indicatorY, indicatorX + 4, indicatorY + 4, Theme.ACTIVE_PROJECT_INDICATOR);
             }
+
             int color = selected ? Theme.TEXT_PRIMARY : Theme.TEXT_SECONDARY;
             gfx.drawString(font, project.name(), left + 12, top + (height - 9) / 2, color, false);
         }
+
         @Override public boolean mouseClicked(double mx, double my, int btn) {
             if (btn == 0) {
                 projectList.setSelected(this);

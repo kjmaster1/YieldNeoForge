@@ -13,7 +13,6 @@ public class GoalTracker {
     private int currentCount = 0;
     private int startCount = -1;
     private double cachedRate = 0.0;
-    private int tempCount = 0;
 
     private boolean isCompleted = false;
     private boolean hasToastFired = false;
@@ -67,18 +66,6 @@ public class GoalTracker {
                 hasToastFired = false;
             }
         }
-    }
-
-    public void resetTempCount() {
-        this.tempCount = 0;
-    }
-
-    public void incrementTempCount(int amount) {
-        this.tempCount += amount;
-    }
-
-    public void commitCounts() {
-        update(this.tempCount);
     }
 
     public void updateRate() {

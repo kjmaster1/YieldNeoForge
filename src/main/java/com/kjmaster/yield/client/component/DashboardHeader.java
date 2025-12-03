@@ -37,7 +37,7 @@ public class DashboardHeader extends AbstractWidget {
 
     private YieldProject currentProject;
 
-    // Callbacks for screen transitions (still needed as Header doesn't know about Screen stack)
+    // Callbacks for screen transitions
     private Runnable onAddGoalClicked;
 
     public DashboardHeader(YieldServices services) {
@@ -75,7 +75,6 @@ public class DashboardHeader extends AbstractWidget {
         this.nameInput.setMaxLength(32);
         this.nameInput.setResponder(text -> {
             if (currentProject != null && !text.equals(currentProject.name())) {
-                // Controller handles the update -> emits Event -> we catch event -> setProject updates UI
                 YieldProject updated = currentProject.withName(text);
                 projectController.updateProject(updated);
             }
@@ -89,7 +88,6 @@ public class DashboardHeader extends AbstractWidget {
                 projectController.setActiveProject(currentProject);
                 sessionController.startSession();
             }
-            // No manual updateButtonStates() needed; event bus handles it.
         }).width(80).build();
 
         this.addGoalButton = Button.builder(Component.translatable("yield.label.add_goal"), btn -> {
@@ -99,8 +97,6 @@ public class DashboardHeader extends AbstractWidget {
         this.deleteButton = Button.builder(Component.translatable("yield.label.delete"), btn -> {
             if (currentProject != null) {
                 projectController.deleteProject(currentProject);
-                // ProjectController will fire ProjectListChanged, Sidebar listens to that.
-                // We don't need to do anything here, usually Sidebar selects a new project which fires ActiveProjectChanged
             }
         }).width(60).build();
 
@@ -125,9 +121,16 @@ public class DashboardHeader extends AbstractWidget {
     }
 
     @Override
-    public void setX(int x) { super.setX(x); updateChildrenPositions(); }
+    public void setX(int x) {
+        super.setX(x);
+        updateChildrenPositions();
+    }
+
     @Override
-    public void setY(int y) { super.setY(y); updateChildrenPositions(); }
+    public void setY(int y) {
+        super.setY(y);
+        updateChildrenPositions();
+    }
 
     private void updateChildrenPositions() {
         int gap = 10;
@@ -209,7 +212,6 @@ public class DashboardHeader extends AbstractWidget {
 
         if (hasSel && sessionStatus.isRunning()) {
             boolean isActive = false;
-            // Check if THIS project is the running one
             var activeOpt = projectProvider.getActiveProject();
             if (activeOpt.isPresent() && activeOpt.get().id().equals(currentProject.id())) {
                 isActive = true;

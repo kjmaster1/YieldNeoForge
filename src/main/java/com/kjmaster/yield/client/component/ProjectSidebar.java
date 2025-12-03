@@ -174,9 +174,13 @@ public class ProjectSidebar extends AbstractWidget {
         return handled[0] || super.mouseClicked(mouseX, mouseY, button);
     }
 
-    @Override protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {}
+    @Override
+    protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
+    }
 
-    public void setOnProjectSelected(Consumer<YieldProject> listener) { this.onProjectSelected = listener; }
+    public void setOnProjectSelected(Consumer<YieldProject> listener) {
+        this.onProjectSelected = listener;
+    }
 
     public void refreshList() {
         this.projectList.refresh();
@@ -209,7 +213,9 @@ public class ProjectSidebar extends AbstractWidget {
     }
 
     public class ProjectList extends ObjectSelectionList<ProjectEntry> {
-        public ProjectList(Minecraft mc, int w, int h, int y, int itemH) { super(mc, w, h, y, itemH); }
+        public ProjectList(Minecraft mc, int w, int h, int y, int itemH) {
+            super(mc, w, h, y, itemH);
+        }
 
         public void refresh() {
             this.clearEntries();
@@ -220,7 +226,10 @@ public class ProjectSidebar extends AbstractWidget {
         }
 
         public void selectProject(YieldProject p) {
-            if (p == null) { this.setSelected(null); return; }
+            if (p == null) {
+                this.setSelected(null);
+                return;
+            }
             for (ProjectEntry entry : this.children()) {
                 if (entry.projectId.equals(p.id())) {
                     this.setSelected(entry);
@@ -229,9 +238,19 @@ public class ProjectSidebar extends AbstractWidget {
             }
         }
 
-        @Override public int getRowWidth() { return this.width - 10; }
-        @Override protected int getScrollbarPosition() { return this.width - 6; }
-        @Override public void renderListBackground(@NotNull GuiGraphics g) {}
+        @Override
+        public int getRowWidth() {
+            return this.width - 10;
+        }
+
+        @Override
+        protected int getScrollbarPosition() {
+            return this.width - 6;
+        }
+
+        @Override
+        public void renderListBackground(@NotNull GuiGraphics g) {
+        }
     }
 
     public class ProjectEntry extends ObjectSelectionList.Entry<ProjectEntry> {

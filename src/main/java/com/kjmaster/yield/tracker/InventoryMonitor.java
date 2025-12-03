@@ -41,6 +41,7 @@ public class InventoryMonitor {
     public void markItemDirty(Object item) {
         markDirty();
     }
+
     public void markAllDirty() {
         markDirty();
     }

@@ -135,10 +135,7 @@ public class ProjectRepository {
                 folderName = "local_fallback";
             }
 
-            storageDir = FMLPaths.CONFIGDIR.get()
-                    .resolve("yield")
-                    .resolve("saves")
-                    .resolve(folderName);
+            storageDir = FMLPaths.GAMEDIR.get().resolve("yield_data").resolve(folderName);
         }
 
         return storageDir.resolve(DIR_NAME).toFile();

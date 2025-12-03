@@ -150,7 +150,8 @@ public class GoalEditScreen extends Screen {
             // UI Updates via Events usually, but explicit refresh ensures snappy UX for the modal parent
             this.parent.updateUiState(updatedProject);
             this.services.projectController().updateProject(updatedProject);
-        } catch (NumberFormatException ignored) {}
+        } catch (NumberFormatException ignored) {
+        }
         onClose();
     }
 

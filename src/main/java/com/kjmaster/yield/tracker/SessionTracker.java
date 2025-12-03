@@ -88,12 +88,6 @@ public class SessionTracker implements ISessionStatus, ISessionController {
     }
 
     @Override
-    public void addXpGain(int amount) {
-        if (!isRunning) return;
-        engine.addXp(amount);
-    }
-
-    @Override
     public double getXpPerHour() {
         return engine.getXpRate();
     }

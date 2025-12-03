@@ -19,13 +19,6 @@ public interface ISessionController {
     void setDirty();
 
     /**
-     * Adds an XP gain amount to the XP rate calculator.
-     *
-     * @param amount The amount of XP gained.
-     */
-    void addXpGain(int amount);
-
-    /**
      * Tick handler to update tracking logic.
      *
      * @param player The client player entity.

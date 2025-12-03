@@ -10,17 +10,20 @@ import com.kjmaster.yield.manager.ProjectRepository;
 import com.kjmaster.yield.tracker.SessionTracker;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
+import net.neoforged.neoforge.client.gui.ConfigurationScreen;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
-@Mod(Yield.MODID)
+@Mod(value = Yield.MODID, dist = Dist.CLIENT)
 public class Yield {
     public static final String MODID = "yield";
     public static final Logger LOGGER = LogUtils.getLogger();
@@ -33,6 +36,7 @@ public class Yield {
     public Yield(IEventBus modEventBus, ModContainer modContainer) {
         instance = this;
 
+        modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
         modContainer.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
 
         // 1. Instantiate Infrastructure

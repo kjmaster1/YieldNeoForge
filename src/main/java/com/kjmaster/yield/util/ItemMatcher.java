@@ -2,7 +2,6 @@ package com.kjmaster.yield.util;
 
 import com.kjmaster.yield.project.ProjectGoal;
 import net.minecraft.core.component.DataComponentType;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.component.TypedDataComponent;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;

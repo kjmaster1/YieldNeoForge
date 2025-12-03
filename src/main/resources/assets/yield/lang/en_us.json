@@ -1,23 +1,26 @@
 {
   "yield.configuration.title": "Yield Configs",
-  "yield.configuration.section.yield.common.toml": "Yield Configs",
-  "yield.configuration.section.yield.common.toml.title": "Yield Configs",
-
+  "yield.configuration.section.yield.client.toml": "Yield Configs",
+  "yield.configuration.section.yield.client.toml.title": "Yield Configs",
+  "yield.configuration.hud": "Hud Overlay Configuration",
+  "yield.configuration.overlayEnabled": "HUD Overlay Toggle:",
+  "yield.configuration.overlayX": "HUD Overlay X Position:",
+  "yield.configuration.overlayY": "HUD Overlay Y Position:",
+  "yield.configuration.overlayColor": "HUD Overlay Background Color:",
+  "yield.configuration.general": "General Mod Configuration",
+  "yield.configuration.rateWindow": "Rate Window (Secs):",
   "key.categories.yield": "Yield",
   "key.yield.open_dashboard": "Open Dashboard",
   "key.yield.quick_track": "Quick Track Item",
   "key.yield.toggle_overlay": "Toggle Overlay",
-
   "yield.toast.complete": "Goal Met!",
   "yield.dashboard.title": "Yield Dashboard",
-
   "yield.label.project_name": "Project Name",
   "yield.label.new_project": "+ New Project",
   "yield.label.start": "Start",
   "yield.label.stop": "Stop",
   "yield.label.delete": "Delete",
   "yield.label.add_goal": "+ Goal",
-
   "yield.tooltip.progress": "Progress: %s / %s",
   "yield.tooltip.rate": "Yield: %s/hr",
   "yield.tooltip.eta": "ETA: %s",
@@ -33,7 +36,6 @@
   "yield.label.move_hud": "Move Hud",
   "yield.label.goals_empty": "Drag items from JEI or click '+ Goal' to begin.",
   "yield.title.select_project": "Select Project",
-
   "yield.title.component_selection": "Configure Strict Mode",
   "yield.label.components_btn": "Config...",
   "yield.label.ignored": "IGNORED",

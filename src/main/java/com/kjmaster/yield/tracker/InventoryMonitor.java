@@ -87,9 +87,15 @@ public class InventoryMonitor {
      */
     private static class CapabilityStrategy implements Strategy {
         private long lastStateHash = 0;
+        private int tickCounter = 0;
 
         @Override
         public boolean isDirty(Player player) {
+
+            if (tickCounter++ % 10 != 0) {
+                return false;
+            }
+
             IItemHandler handler = player.getCapability(Capabilities.ItemHandler.ENTITY, null);
             if (handler == null) return false;
 

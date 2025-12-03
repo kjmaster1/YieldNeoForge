@@ -202,7 +202,10 @@ public class TrackerEngine {
 
             // 3. Calculate Repair
             int damageDiff = lastStack.getDamageValue() - currentStack.getDamageValue();
-            if (damageDiff > 0) {
+
+            final int MAX_REPAIR_PER_TICK = 100;
+
+            if (damageDiff > 0 && damageDiff <= MAX_REPAIR_PER_TICK) {
                 // 1 XP = 2 Durability. Round up to catch 1-point repairs.
                 int xpConsumed = (int) Math.ceil(damageDiff / 2.0);
                 xpCalculator.addGain(xpConsumed);

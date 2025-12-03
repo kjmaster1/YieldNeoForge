@@ -9,9 +9,15 @@ import top.theillusivec4.curios.api.CuriosApi;
 public class CuriosInventoryWatcher implements InventoryMonitor.Strategy {
 
     private long lastStateHash = 0;
+    private int tickCounter = 0;
 
     @Override
     public boolean isDirty(Player player) {
+
+        if (tickCounter++ % 10 != 0) {
+            return false;
+        }
+
         long currentHash = calculateCuriosHash(player);
         if (currentHash != lastStateHash) {
             lastStateHash = currentHash;

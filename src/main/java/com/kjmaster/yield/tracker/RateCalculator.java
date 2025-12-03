@@ -14,6 +14,8 @@ public class RateCalculator {
     private int currentBucketIndex = 0;
     private int runningSum = 0;
 
+    private static final double MIN_SAMPLE_DURATION = 10.0;
+
     public RateCalculator(int windowSeconds, TimeSource timeSource) {
         this.windowSeconds = windowSeconds;
         this.buckets = new int[windowSeconds];
@@ -62,8 +64,9 @@ public class RateCalculator {
         double nowSec = timeSource.getTimeSeconds();
         double activeDuration = nowSec - startTime;
 
-        // Prevent division by zero and handle warm-up
-        double divisor = Math.min(windowSeconds, Math.max(1.0, activeDuration));
+        double effectiveDuration = Math.max(MIN_SAMPLE_DURATION, activeDuration);
+
+        double divisor = Math.min(windowSeconds, effectiveDuration);
 
         return runningSum * (3600.0 / divisor);
     }

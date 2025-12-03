@@ -11,7 +11,7 @@ import java.util.function.Consumer;
 
 public class VanillaInventoryProvider implements IInventoryProvider {
 
-    private static final int MAX_DEPTH = 8; // Safety limit
+    private static final int MAX_DEPTH = 1; // Safety limit
 
     @Override
     public void collect(Player player, Consumer<ItemStack> acceptor) {

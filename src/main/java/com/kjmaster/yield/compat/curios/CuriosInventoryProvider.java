@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 
 public class CuriosInventoryProvider implements IInventoryProvider {
 
-    private static final int MAX_DEPTH = 8; // Safety limit to prevent StackOverflow
+    private static final int MAX_DEPTH = 1; // Safety limit to prevent StackOverflow
 
     @Override
     public void collect(Player player, Consumer<ItemStack> acceptor) {

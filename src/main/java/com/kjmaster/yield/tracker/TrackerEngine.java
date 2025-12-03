@@ -8,14 +8,12 @@ import com.kjmaster.yield.time.GameTickSource;
 import com.kjmaster.yield.time.TimeSource;
 import com.kjmaster.yield.util.ItemMatcher;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -32,6 +30,9 @@ public class TrackerEngine {
     private int tickCounter = 0;
     private double cachedXpRate = 0.0;
 
+    private final Map<EquipmentSlot, ItemStack> lastEquipment = new EnumMap<>(EquipmentSlot.class);
+    private int lastSelectedSlot = -1;
+
     // Concurrency Controls
     // Use Virtual Threads if available (Java 21), otherwise fallback implicitly handled by Executors.newVirtualThreadPerTaskExecutor()
     private final ExecutorService asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -44,7 +45,9 @@ public class TrackerEngine {
         this.timeSource = new GameTickSource();
     }
 
-    public TimeSource getTimeSource() { return timeSource; }
+    public TimeSource getTimeSource() {
+        return timeSource;
+    }
 
     public void reset() {
         this.xpCalculator = new RateCalculator(Config.RATE_WINDOW.get(), timeSource);
@@ -55,7 +58,9 @@ public class TrackerEngine {
         this.timeSource.reset();
     }
 
-    public double getXpRate() { return cachedXpRate; }
+    public double getXpRate() {
+        return cachedXpRate;
+    }
 
     public void addXp(int amount) {
         if (xpCalculator != null) xpCalculator.addGain(amount);
@@ -159,12 +164,50 @@ public class TrackerEngine {
     }
 
     private void updateXpTracking(Player player) {
+        // 1. Standard XP Bar Tracking
         int currentXp = player.totalExperience;
         if (state.getLastTotalXp() != -1) {
             int diff = currentXp - state.getLastTotalXp();
             if (diff > 0) xpCalculator.addGain(diff);
         }
         state.setLastTotalXp(currentXp);
+
+        // 2. Mending Tracking (Enhanced for GUI support)
+        // We NO LONGER check "screen == null".
+        // Instead, we rely on strict component matching to filter out swaps.
+
+        int currentSlot = player.getInventory().selected;
+        boolean slotChanged = currentSlot != lastSelectedSlot;
+        lastSelectedSlot = currentSlot;
+
+        for (net.minecraft.world.entity.EquipmentSlot slot : net.minecraft.world.entity.EquipmentSlot.values()) {
+            ItemStack currentStack = player.getItemBySlot(slot);
+            ItemStack lastStack = lastEquipment.get(slot);
+
+            // Update cache (Deep copy is crucial)
+            lastEquipment.put(slot, currentStack.copy());
+
+            if (lastStack == null || lastStack.isEmpty() || currentStack.isEmpty()) continue;
+
+            // Skip MainHand if the hotbar selection just changed
+            if (slot == EquipmentSlot.MAINHAND && slotChanged) continue;
+
+            // STRICT IDENTITY CHECK
+            // 1. Must be same Item Type (e.g. Diamond Pickaxe)
+            if (!ItemStack.isSameItem(lastStack, currentStack)) continue;
+
+            // 2. Must have identical components (Enchants, Name, Lore, etc.)
+            // We only allow DAMAGE to differ.
+            if (!ItemMatcher.checkContains(lastStack, currentStack, Set.of(DataComponents.DAMAGE))) continue;
+
+            // 3. Calculate Repair
+            int damageDiff = lastStack.getDamageValue() - currentStack.getDamageValue();
+            if (damageDiff > 0) {
+                // 1 XP = 2 Durability. Round up to catch 1-point repairs.
+                int xpConsumed = (int) Math.ceil(damageDiff / 2.0);
+                xpCalculator.addGain(xpConsumed);
+            }
+        }
     }
 
     private void updateRates() {

@@ -129,7 +129,7 @@ public class ProjectRepository {
         } else {
             ServerData serverData = mc.getCurrentServer();
             if (serverData != null) {
-                String rawId = serverData.ip + "_" + serverData.name;
+                String rawId = serverData.ip;
                 folderName = DigestUtils.sha256Hex(rawId);
             } else {
                 folderName = "local_fallback";

@@ -50,14 +50,10 @@ public class ItemMatcher {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        // Always ignore Damage (Durability) in loose strict mode unless explicitly tracked?
-        // Standard practice is to ignore damage for tools/armor matching.
-        ignoredTypes.add(DataComponents.DAMAGE);
-
         return checkContains(a, b, ignoredTypes) && checkContains(b, a, ignoredTypes);
     }
 
-    private static boolean checkContains(ItemStack stackA, ItemStack stackB, Set<DataComponentType<?>> ignored) {
+    public static boolean checkContains(ItemStack stackA, ItemStack stackB, Set<DataComponentType<?>> ignored) {
         for (TypedDataComponent<?> component : stackA.getComponents()) {
             DataComponentType<?> type = component.type();
 

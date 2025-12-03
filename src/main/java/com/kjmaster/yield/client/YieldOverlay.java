@@ -3,6 +3,7 @@ package com.kjmaster.yield.client;
 import com.kjmaster.yield.Config;
 import com.kjmaster.yield.api.IProjectProvider;
 import com.kjmaster.yield.api.ISessionStatus;
+import com.kjmaster.yield.client.screen.HudEditorScreen;
 import com.kjmaster.yield.project.ProjectGoal;
 import com.kjmaster.yield.project.YieldProject;
 import com.kjmaster.yield.tracker.GoalTracker;
@@ -34,6 +35,8 @@ public class YieldOverlay implements LayeredDraw.Layer {
         Minecraft mc = Minecraft.getInstance();
         if (mc.options.hideGui || mc.getDebugOverlay().showDebugScreen()) return;
         if (!Config.OVERLAY_ENABLED.get()) return;
+
+        if (mc.screen instanceof HudEditorScreen) return;
 
         Optional<YieldProject> projectOpt = projectProvider.getActiveProject();
         if (projectOpt.isEmpty()) return;

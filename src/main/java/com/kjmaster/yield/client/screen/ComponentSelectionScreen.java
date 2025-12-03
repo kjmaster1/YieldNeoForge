@@ -71,9 +71,6 @@ public class ComponentSelectionScreen extends Screen {
             this.clearEntries();
             for (TypedDataComponent<?> component : stack.getComponents()) {
                 DataComponentType<?> type = component.type();
-                // Damage is always ignored by logic, hide to avoid confusion
-                if (type == DataComponents.DAMAGE) continue;
-
                 ResourceLocation id = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type);
                 if (id != null) {
                     this.addEntry(new ComponentEntry(id));

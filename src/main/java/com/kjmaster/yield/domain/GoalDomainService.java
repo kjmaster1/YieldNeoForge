@@ -16,23 +16,15 @@ public class GoalDomainService {
         for (int i = 0; i < newGoals.size(); i++) {
             ProjectGoal existing = newGoals.get(i);
 
-            // CHANGED: Use a smarter merge strategy.
-            // If the item matches, we should generally merge into the existing goal
-            // to prevent duplicates, even if the strictness differs slightly
-            // (prioritize keeping the existing goal's strictness but updating the count).
             if (shouldMerge(existing, goal)) {
-                // FIX: Calculate new strictness.
-                // If the incoming goal is fuzzy (goal.strict() is false), the merged goal MUST become fuzzy.
-                // Otherwise, the items the user is trying to track (which likely don't match the strict components)
-                // will not be counted, despite the target amount increasing.
-                boolean newStrictness = existing.strict() && goal.strict();
-
+                // Preserving existing strictness prevents "Erasure of Strict Mode"
+                // We prioritize the user's saved configuration over the transient "Quick Track" state.
                 ProjectGoal mergedGoal = new ProjectGoal(
-                        existing.id(), // Keep original ID
+                        existing.id(),
                         existing.item(),
-                        existing.targetAmount() + goal.targetAmount(), // Accumulate amount
-                        newStrictness, // FIX: Use calculated strictness
-                        existing.components(),
+                        existing.targetAmount() + goal.targetAmount(),
+                        existing.strict(), // ALWAYS use existing.strict()
+                        existing.components(), // ALWAYS use existing.components()
                         existing.targetTag(),
                         existing.ignoredComponents()
                 );
